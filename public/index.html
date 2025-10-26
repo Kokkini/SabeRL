@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SabeRL Arena - 2D Combat Game</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="game-container">
+        <header>
+            <h1>SabeRL Arena</h1>
+            <p>Use WASD to move, avoid the rotating saber!</p>
+        </header>
+        
+        <main>
+            <canvas id="game-canvas" width="800" height="600"></canvas>
+            
+            <div id="game-ui">
+                <div id="game-status">Press SPACE to start</div>
+                <div id="scoreboard">
+                    <div class="score-item">
+                        <span class="player-name">Player</span>
+                        <span class="score" id="player-score">0</span>
+                    </div>
+                    <div class="score-item">
+                        <span class="player-name">AI</span>
+                        <span class="score" id="ai-score">0</span>
+                    </div>
+                </div>
+                <div id="game-controls">
+                    <div class="control-group">
+                        <h3>Controls</h3>
+                        <p>W - Move Up</p>
+                        <p>A - Move Left</p>
+                        <p>S - Move Down</p>
+                        <p>D - Move Right</p>
+                    </div>
+                    <div class="control-group">
+                        <h3>Game Rules</h3>
+                        <p>• Touch opponent with your saber to win</p>
+                        <p>• Sabers rotate automatically</p>
+                        <p>• Stay within arena boundaries</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+        
+        <footer>
+            <p>Browser-based 2D Arena Combat Game</p>
+        </footer>
+    </div>
+    
+    <!-- Load TensorFlow.js from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
+    <script src="/src/main.js" type="module"></script>
+    <script>
+        // Fallback for browsers without ES6 module support
+        if (!window.Symbol) {
+            document.body.innerHTML = '<div style="text-align: center; padding: 50px; color: #ff0000;"><h1>Browser Not Supported</h1><p>This game requires a modern browser with ES6 support.</p><p>Please use Chrome 57+, Firefox 52+, Safari 11+, or Edge 16+.</p></div>';
+        }
+    </script>
+</body>
+</html>
