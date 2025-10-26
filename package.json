@@ -13,7 +13,7 @@
     "lint": "eslint src/",
     "format": "prettier --write src/",
     "build": "npm run build:copy && npm run build:minify",
-    "build:copy": "mkdir -p dist && (cp -r public/* dist/ 2>/dev/null || true) && cp -r src dist/",
+    "build:copy": "mkdir -p dist && cp -r public/. dist/ && cp -r src dist/",
     "build:minify": "npm run build:minify:js",
     "build:minify:js": "echo 'Minification would go here - using terser or similar'",
     "deploy": "npm run build && npm run deploy:gh-pages",
