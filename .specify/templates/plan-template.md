@@ -31,7 +31,25 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+### Browser-First Architecture Compliance
+- [ ] Feature MUST run entirely in browser without server dependencies
+- [ ] No backend services, APIs, or external data sources required
+- [ ] Static site deployment only - no server-side processing
+
+### Client-Side Training Requirements
+- [ ] RL training MUST execute locally in browser (WebAssembly/Web Workers/JS)
+- [ ] Training data and model weights MUST persist locally
+- [ ] No external network requests for core functionality
+
+### Progressive Enhancement
+- [ ] Core functionality works in modern browsers with WebAssembly
+- [ ] Graceful degradation for different browser capabilities
+- [ ] Enhanced features are optional optimizations
+
+### Data Sovereignty
+- [ ] All user data remains on user's device
+- [ ] No data transmission to external servers without consent
+- [ ] Robust local storage with backup/export capabilities
 
 ## Project Structure
 

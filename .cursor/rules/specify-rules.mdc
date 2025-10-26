@@ -1,0 +1,30 @@
+# SabeRL Development Guidelines
+
+Auto-generated from all feature plans. Last updated: 2025-10-26
+
+## Active Technologies
+
+- JavaScript ES6+, HTML5, CSS3 + HTML5 Canvas API, Web APIs (requestAnimationFrame, addEventListener) (001-base-game-arena)
+
+## Project Structure
+
+```text
+backend/
+frontend/
+tests/
+```
+
+## Commands
+
+npm test && npm run lint
+
+## Code Style
+
+JavaScript ES6+, HTML5, CSS3: Follow standard conventions
+
+## Recent Changes
+
+- 001-base-game-arena: Added JavaScript ES6+, HTML5, CSS3 + HTML5 Canvas API, Web APIs (requestAnimationFrame, addEventListener)
+
+<!-- MANUAL ADDITIONS START -->
+<!-- MANUAL ADDITIONS END -->
