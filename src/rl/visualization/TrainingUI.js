@@ -147,7 +147,7 @@ export class TrainingUI {
           </div>
           <div class="status-item">
             <span class="status-label">Games:</span>
-            <span id="games-completed" class="status-value">0 / ${GameConfig.rl.maxGames}</span>
+            <span id="games-completed" class="status-value">0 / 1000</span>
           </div>
           <div class="status-item">
             <span class="status-label">Win Rate:</span>
@@ -814,7 +814,7 @@ export class TrainingUI {
     // Update games completed
     const gamesElement = document.getElementById('games-completed');
     if (gamesElement) {
-      gamesElement.textContent = `${gamesCompleted} / ${this.trainingSession?.options.maxGames || GameConfig.rl.maxGames}`;
+      gamesElement.textContent = `${gamesCompleted} / ${this.trainingSession?.options.maxGames || 1000}`;
     }
 
     // Update win rate
@@ -1070,7 +1070,7 @@ export class TrainingUI {
     // Reset metrics
     const gamesElement = document.getElementById('games-completed');
     if (gamesElement) {
-      gamesElement.textContent = `0 / ${GameConfig.rl.maxGames}`;
+      gamesElement.textContent = '0 / 1000';
     }
 
     const winRateElement = document.getElementById('win-rate');

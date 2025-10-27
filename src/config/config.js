@@ -250,7 +250,6 @@ export const GameConfig = {
     // Game settings
     decisionInterval: 4, // frames between AI decisions
     parallelGames: 10,   // number of parallel training games
-    maxGames: 100000,      // total number of games to train
     
     // Training algorithms
     algorithm: 'PPO', // 'PPO' or 'A2C'

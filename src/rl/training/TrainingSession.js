@@ -17,7 +17,7 @@ export class TrainingSession {
   constructor(game, options = {}) {
     this.game = game;
     this.options = {
-      maxGames: options.maxGames || GameConfig.rl.maxGames,
+      maxGames: options.maxGames || 1000,
       autoSaveInterval: options.autoSaveInterval || GameConfig.rl.autoSaveInterval,
       trainingFrequency: options.trainingFrequency || GameConfig.rl.trainingFrequency,
       ...options
