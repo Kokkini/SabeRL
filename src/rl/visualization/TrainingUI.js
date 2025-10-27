@@ -811,8 +811,6 @@ export class TrainingUI {
    * @param {Object} metrics - Training metrics
    */
   updateGameEnd(winner, gamesCompleted, metrics) {
-    console.log(`updateGameEnd called: winner=${winner}, gamesCompleted=${gamesCompleted}`);
-    
     // Update games completed
     const gamesElement = document.getElementById('games-completed');
     if (gamesElement) {
@@ -837,7 +835,6 @@ export class TrainingUI {
    * @param {Object} metrics - Training metrics
    */
   updateTrainingProgress(metrics) {
-    console.log(`updateTrainingProgress called: gamesCompleted=${metrics.gamesCompleted}`);
     this.updateMetrics(metrics);
     
     // Only update chart if we have valid training data

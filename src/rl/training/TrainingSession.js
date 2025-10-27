@@ -407,7 +407,6 @@ export class TrainingSession {
 
       // Notify callbacks
       if (this.onGameEnd) {
-        console.log(`TrainingSession: Calling onGameEnd for parallel game ${gameId}, winner=${result.winner}, gamesCompleted=${this.gamesCompleted}`);
         this.onGameEnd(result.winner, this.gamesCompleted, this.trainingMetrics);
       }
 
@@ -487,7 +486,6 @@ export class TrainingSession {
 
       // Notify callbacks
       if (this.onGameEnd) {
-        console.log(`TrainingSession: Calling onGameEnd for main game, winner=${winner}, gamesCompleted=${this.gamesCompleted}`);
         this.onGameEnd(winner, this.gamesCompleted, this.trainingMetrics);
       }
 
@@ -534,7 +532,6 @@ export class TrainingSession {
 
       // Notify training progress
       if (this.onTrainingProgress) {
-        console.log(`TrainingSession: Calling onTrainingProgress, gamesCompleted=${this.trainingMetrics.gamesCompleted}`);
         this.onTrainingProgress(this.trainingMetrics);
       }
 
