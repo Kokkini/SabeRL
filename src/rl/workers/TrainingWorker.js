@@ -1,268 +1,75 @@
 /**
- * TrainingWorker - Web Worker for running training games in parallel
- * Executes training games without blocking the main thread
+ * TrainingWorker - Web Worker for running parallel training games
+ * Runs headless games without rendering to collect training data
  */
 
-// Import necessary modules (Web Workers have limited import support)
-// In a real implementation, you would need to use importScripts or bundle the worker
+// Import TensorFlow.js
+importScripts('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js');
+
+// Simple TensorFlow.js operations for the worker
+const tf = self.tf;
 
 class TrainingWorker {
   constructor() {
-    this.activeGames = new Map();
     this.isRunning = false;
+    this.activeGames = new Map();
+    this.gameCounter = 0;
+    
+    // Game components (simplified versions for headless execution)
+    this.gameConfig = null;
+    this.neuralNetwork = null;
+    this.policyAgent = null;
+    
+    // Statistics
+    this.stats = {
+      totalGames: 0,
+      completedGames: 0,
+      failedGames: 0,
+      startTime: 0
+    };
   }
 
   /**
-   * Handle messages from main thread
-   * @param {MessageEvent} event - Message event
+   * Initialize the worker
    */
-  handleMessage(event) {
-    const { type, data } = event.data;
-
-    switch (type) {
-      case 'START_GAMES':
-        this.startGames(data);
-        break;
-      
-      case 'STOP_GAMES':
-        this.stopGames();
-        break;
-      
-      case 'PAUSE_GAMES':
-        this.pauseGames();
-        break;
-      
-      case 'RESUME_GAMES':
-        this.resumeGames();
-        break;
-      
-      default:
-        console.warn(`Unknown message type: ${type}`);
+  async initialize() {
+    try {
+      // Wait for TensorFlow.js to be ready
+      await tf.ready();
+      console.log('TrainingWorker initialized');
+      this.sendMessage('WORKER_READY');
+    } catch (error) {
+      console.error('Failed to initialize TrainingWorker:', error);
+      this.sendError('INIT_ERROR', error);
     }
   }
 
   /**
    * Start training games
-   * @param {Object} data - Game data
+   * @param {Array} gameIds - Array of game IDs to start
+   * @param {Object} config - Training configuration
    */
-  async startGames(data) {
-    const { gameIds, config } = data;
-    
-    this.isRunning = true;
-    
-    for (const gameId of gameIds) {
-      this.startGame(gameId, config);
-    }
-    
-    // Notify main thread that worker is ready
-    self.postMessage({ type: 'WORKER_READY' });
-  }
-
-  /**
-   * Start a single training game
-   * @param {string} gameId - Game ID
-   * @param {Object} config - Game configuration
-   */
-  async startGame(gameId, config) {
+  async startGames(gameIds, config) {
     try {
-      const game = {
-        id: gameId,
-        config,
-        startTime: Date.now(),
-        status: 'running'
-      };
+      this.isRunning = true;
+      this.gameConfig = config.gameConfig;
+      this.stats.startTime = Date.now();
       
-      this.activeGames.set(gameId, game);
+      // Initialize neural network from serialized data
+      this.neuralNetwork = await this.loadNeuralNetwork(config.neuralNetwork);
       
-      // Simulate game execution
-      // In a real implementation, this would run the actual game logic
-      await this.runGame(game);
+      // Create policy agent
+      this.policyAgent = this.createPolicyAgent();
       
-    } catch (error) {
-      this.handleGameError(gameId, error);
-    }
-  }
-
-  /**
-   * Run a training game
-   * @param {Object} game - Game object
-   */
-  async runGame(game) {
-    const { id, config } = game;
-    
-    try {
-      // Simulate game execution with configurable duration
-      const gameDuration = config.gameDuration || 5000; // 5 seconds default
-      const maxSteps = config.maxSteps || 1000;
-      
-      let step = 0;
-      let gameState = this.initializeGameState(config);
-      let totalReward = 0;
-      
-      // Game loop
-      while (step < maxSteps && this.isRunning) {
-        // Simulate game step
-        const stepResult = this.simulateGameStep(gameState, config);
-        gameState = stepResult.state;
-        totalReward += stepResult.reward;
-        
-        step++;
-        
-        // Check for game end conditions
-        if (stepResult.terminated) {
-          break;
-        }
-        
-        // Small delay to prevent blocking
-        if (step % 10 === 0) {
-          await this.delay(1);
-        }
+      // Start each game
+      for (const gameId of gameIds) {
+        this.startGame(gameId);
       }
       
-      // Calculate final result
-      const result = this.calculateGameResult(gameState, totalReward, step);
-      const metrics = this.calculateGameMetrics(game, result);
-      
-      // Complete the game
-      this.completeGame(id, result, metrics);
-      
+      console.log(`Started ${gameIds.length} training games`);
     } catch (error) {
-      this.handleGameError(id, error);
-    }
-  }
-
-  /**
-   * Initialize game state
-   * @param {Object} config - Game configuration
-   * @returns {Object} Initial game state
-   */
-  initializeGameState(config) {
-    return {
-      playerPosition: { x: 0, y: 0 },
-      opponentPosition: { x: 10, y: 10 },
-      playerSaberAngle: 0,
-      opponentSaberAngle: Math.PI,
-      step: 0,
-      terminated: false
-    };
-  }
-
-  /**
-   * Simulate a game step
-   * @param {Object} state - Current game state
-   * @param {Object} config - Game configuration
-   * @returns {Object} Step result
-   */
-  simulateGameStep(state, config) {
-    // Simple simulation - in reality this would run the actual game logic
-    const stepSize = 0.1;
-    const reward = Math.random() * 0.1 - 0.05; // Small random reward
-    
-    // Update positions (random walk)
-    state.playerPosition.x += (Math.random() - 0.5) * stepSize;
-    state.playerPosition.y += (Math.random() - 0.5) * stepSize;
-    state.opponentPosition.x += (Math.random() - 0.5) * stepSize;
-    state.opponentPosition.y += (Math.random() - 0.5) * stepSize;
-    
-    // Update saber angles
-    state.playerSaberAngle += 0.1;
-    state.opponentSaberAngle += 0.1;
-    
-    state.step++;
-    
-    // Random termination
-    const terminated = Math.random() < 0.01; // 1% chance per step
-    
-    return {
-      state,
-      reward,
-      terminated
-    };
-  }
-
-  /**
-   * Calculate game result
-   * @param {Object} state - Final game state
-   * @param {number} totalReward - Total reward earned
-   * @param {number} steps - Number of steps taken
-   * @returns {Object} Game result
-   */
-  calculateGameResult(state, totalReward, steps) {
-    // Simple result calculation
-    const winner = totalReward > 0 ? 'player' : 'ai';
-    
-    return {
-      winner,
-      totalReward,
-      steps,
-      finalState: state
-    };
-  }
-
-  /**
-   * Calculate game metrics
-   * @param {Object} game - Game object
-   * @param {Object} result - Game result
-   * @returns {Object} Game metrics
-   */
-  calculateGameMetrics(game, result) {
-    const duration = Date.now() - game.startTime;
-    
-    return {
-      duration,
-      rewardPerStep: result.totalReward / result.steps,
-      efficiency: result.steps / duration,
-      winRate: result.winner === 'player' ? 1 : 0
-    };
-  }
-
-  /**
-   * Complete a game
-   * @param {string} gameId - Game ID
-   * @param {Object} result - Game result
-   * @param {Object} metrics - Game metrics
-   */
-  completeGame(gameId, result, metrics) {
-    if (this.activeGames.has(gameId)) {
-      const game = this.activeGames.get(gameId);
-      game.status = 'completed';
-      game.endTime = Date.now();
-      
-      // Notify main thread
-      self.postMessage({
-        type: 'GAME_COMPLETE',
-        data: {
-          gameId,
-          result,
-          metrics
-        }
-      });
-      
-      this.activeGames.delete(gameId);
-    }
-  }
-
-  /**
-   * Handle game error
-   * @param {string} gameId - Game ID
-   * @param {Error} error - Error object
-   */
-  handleGameError(gameId, error) {
-    if (this.activeGames.has(gameId)) {
-      const game = this.activeGames.get(gameId);
-      game.status = 'failed';
-      game.error = error.message;
-      
-      // Notify main thread
-      self.postMessage({
-        type: 'GAME_ERROR',
-        data: {
-          gameId,
-          error: error.message
-        }
-      });
-      
-      this.activeGames.delete(gameId);
+      console.error('Failed to start games:', error);
+      this.sendError('START_GAMES_ERROR', error);
     }
   }
 
@@ -271,71 +78,465 @@ class TrainingWorker {
    */
   stopGames() {
     this.isRunning = false;
-    
-    // Clear all active games
-    for (const [gameId, game] of this.activeGames) {
-      game.status = 'stopped';
-    }
-    
     this.activeGames.clear();
+    console.log('All training games stopped');
   }
 
   /**
-   * Pause all games
+   * Start a single game
+   * @param {string} gameId - Game ID
    */
-  pauseGames() {
-    this.isRunning = false;
+  startGame(gameId) {
+    if (!this.isRunning) {
+      return;
+    }
+
+    try {
+      const game = this.createHeadlessGame();
+      this.activeGames.set(gameId, {
+        game,
+        startTime: Date.now(),
+        status: 'running'
+      });
+      
+      // Run the game asynchronously
+      this.runGame(gameId, game);
+      
+    } catch (error) {
+      console.error(`Failed to start game ${gameId}:`, error);
+      this.sendGameError(gameId, error);
+    }
+  }
+
+  /**
+   * Run a headless game
+   * @param {string} gameId - Game ID
+   * @param {Object} game - Game instance
+   */
+  async runGame(gameId, game) {
+    try {
+      const maxGameTime = this.gameConfig.rl.rewards.maxGameLength * 1000; // Convert to ms
+      const startTime = Date.now();
+      
+      // Run game loop
+      while (this.isRunning && this.activeGames.has(gameId)) {
+        const currentTime = Date.now();
+        const deltaTime = 16; // ~60 FPS
+        
+        // Update game
+        game.update(deltaTime);
+        
+        // Check for game end
+        if (game.isGameOver() || (currentTime - startTime) > maxGameTime) {
+          const result = this.getGameResult(game);
+          this.handleGameComplete(gameId, result);
+          break;
+        }
+        
+        // Small delay to prevent blocking
+        await this.sleep(16);
+      }
+      
+    } catch (error) {
+      console.error(`Error running game ${gameId}:`, error);
+      this.sendGameError(gameId, error);
+    }
+  }
+
+  /**
+   * Create a headless game instance
+   * @returns {Object} Headless game
+   */
+  createHeadlessGame() {
+    const game = {
+      player: this.createPlayer(),
+      ai: this.createAI(),
+      arena: this.createArena(),
+      startTime: Date.now(),
+      isGameOver: false,
+      winner: null
+    };
     
-    // Update game statuses
-    for (const game of this.activeGames.values()) {
-      if (game.status === 'running') {
-        game.status = 'paused';
+    // Set up collision detection
+    game.checkCollisions = () => {
+      // Simple collision detection between player saber and AI
+      const playerSaber = game.player.getSaber();
+      const aiPosition = game.ai.getPosition();
+      
+      if (this.checkSaberHit(playerSaber, aiPosition)) {
+        game.isGameOver = true;
+        game.winner = 'player';
+        return true;
+      }
+      
+      // Check AI saber hit on player
+      const aiSaber = game.ai.getSaber();
+      const playerPosition = game.player.getPosition();
+      
+      if (this.checkSaberHit(aiSaber, playerPosition)) {
+        game.isGameOver = true;
+        game.winner = 'ai';
+        return true;
+      }
+      
+      return false;
+    };
+    
+    game.update = (deltaTime) => {
+      // Update player (AI controlled)
+      game.player.updateAI(deltaTime, game);
+      
+      // Update AI
+      game.ai.update(deltaTime);
+      
+      // Check collisions
+      game.checkCollisions();
+    };
+    
+    return game;
+  }
+
+  /**
+   * Create a headless player
+   * @returns {Object} Headless player
+   */
+  createPlayer() {
+    const position = tf.tensor2d([[8, 8]]); // Center of arena
+    const velocity = tf.tensor2d([[0, 0]]);
+    
+    return {
+      position,
+      velocity,
+      saber: this.createSaber(),
+      controlMode: 'ai',
+      policyAgent: this.policyAgent,
+      
+      updateAI(deltaTime, gameState) {
+        // Make AI decision
+        const decision = this.policyAgent.makeDecision(gameState);
+        
+        // Apply movement based on decision
+        const speed = this.gameConfig.game.playerSpeed;
+        const moveVector = this.convertDecisionToMovement(decision);
+        
+        // Update position
+        const newPosition = this.position.add(moveVector.mul(speed * deltaTime));
+        this.position.dispose();
+        this.position = newPosition;
+        
+        // Update saber
+        this.saber.update(deltaTime);
+      },
+      
+      convertDecisionToMovement(decision) {
+        const action = decision.action;
+        let moveX = 0, moveY = 0;
+        
+        switch (action) {
+          case 'W': moveY = -1; break;
+          case 'A': moveX = -1; break;
+          case 'S': moveY = 1; break;
+          case 'D': moveX = 1; break;
+        }
+        
+        return tf.tensor2d([[moveX, moveY]]);
+      },
+      
+      getPosition() {
+        return this.position;
+      },
+      
+      getSaber() {
+        return this.saber;
+      },
+      
+      dispose() {
+        this.position.dispose();
+        this.velocity.dispose();
+        this.saber.dispose();
+      }
+    };
+  }
+
+  /**
+   * Create a headless AI
+   * @returns {Object} Headless AI
+   */
+  createAI() {
+    const position = tf.tensor2d([[8, 8]]); // Center of arena
+    const velocity = tf.tensor2d([[0, 0]]);
+    
+    return {
+      position,
+      velocity,
+      saber: this.createSaber(),
+      direction: Math.random() * 2 * Math.PI,
+      directionChangeTime: 0,
+      
+      update(deltaTime) {
+        // Simple random movement
+        this.directionChangeTime += deltaTime;
+        if (this.directionChangeTime > 1000) { // Change direction every second
+          this.direction = Math.random() * 2 * Math.PI;
+          this.directionChangeTime = 0;
+        }
+        
+        const speed = this.gameConfig.game.aiSpeed;
+        const moveX = Math.cos(this.direction) * speed * deltaTime;
+        const moveY = Math.sin(this.direction) * speed * deltaTime;
+        
+        const newPosition = this.position.add(tf.tensor2d([[moveX, moveY]]));
+        this.position.dispose();
+        this.position = newPosition;
+        
+        // Update saber
+        this.saber.update(deltaTime);
+      },
+      
+      getPosition() {
+        return this.position;
+      },
+      
+      getSaber() {
+        return this.saber;
+      },
+      
+      dispose() {
+        this.position.dispose();
+        this.velocity.dispose();
+        this.saber.dispose();
+      }
+    };
+  }
+
+  /**
+   * Create a headless saber
+   * @returns {Object} Headless saber
+   */
+  createSaber() {
+    return {
+      angle: 0,
+      angularVelocity: this.gameConfig.arena.saberRotationSpeed,
+      length: this.gameConfig.arena.saberLength,
+      
+      update(deltaTime) {
+        this.angle += this.angularVelocity * deltaTime;
+      },
+      
+      getAngle() {
+        return this.angle;
+      },
+      
+      getEndPosition(playerPosition) {
+        const endX = playerPosition.dataSync()[0] + Math.cos(this.angle) * this.length;
+        const endY = playerPosition.dataSync()[1] + Math.sin(this.angle) * this.length;
+        return tf.tensor2d([[endX, endY]]);
+      },
+      
+      dispose() {
+        // No resources to dispose
+      }
+    };
+  }
+
+  /**
+   * Create a headless arena
+   * @returns {Object} Headless arena
+   */
+  createArena() {
+    return {
+      width: this.gameConfig.arena.width,
+      height: this.gameConfig.arena.height,
+      
+      constrainPosition(position) {
+        const x = Math.max(1, Math.min(this.width - 1, position.dataSync()[0]));
+        const y = Math.max(1, Math.min(this.height - 1, position.dataSync()[1]));
+        return tf.tensor2d([[x, y]]);
+      }
+    };
+  }
+
+  /**
+   * Check if saber hits target
+   * @param {Object} saber - Saber object
+   * @param {tf.Tensor} targetPosition - Target position
+   * @returns {boolean} True if hit
+   */
+  checkSaberHit(saber, targetPosition) {
+    // Simple distance check (in real implementation, would check line-circle intersection)
+    const saberEnd = saber.getEndPosition(tf.tensor2d([[0, 0]])); // Simplified
+    const distance = tf.norm(saberEnd.sub(targetPosition));
+    const hit = distance.dataSync()[0] < 1.0; // Player radius
+    
+    saberEnd.dispose();
+    distance.dispose();
+    
+    return hit;
+  }
+
+  /**
+   * Get game result
+   * @param {Object} game - Game instance
+   * @returns {Object} Game result
+   */
+  getGameResult(game) {
+    const gameLength = (Date.now() - game.startTime) / 1000;
+    
+    return {
+      winner: game.winner || 'timeout',
+      gameLength,
+      metrics: {
+        playerPosition: game.player.getPosition().dataSync(),
+        aiPosition: game.ai.getPosition().dataSync()
+      }
+    };
+  }
+
+  /**
+   * Handle game completion
+   * @param {string} gameId - Game ID
+   * @param {Object} result - Game result
+   */
+  handleGameComplete(gameId, result) {
+    if (this.activeGames.has(gameId)) {
+      const gameInfo = this.activeGames.get(gameId);
+      gameInfo.status = 'completed';
+      gameInfo.endTime = Date.now();
+      gameInfo.duration = gameInfo.endTime - gameInfo.startTime;
+      
+      // Update statistics
+      this.stats.completedGames++;
+      
+      // Clean up game resources
+      gameInfo.game.player.dispose();
+      gameInfo.game.ai.dispose();
+      
+      // Remove from active games
+      this.activeGames.delete(gameId);
+      
+      // Send completion message
+      this.sendMessage('GAME_COMPLETE', {
+        gameId,
+        result,
+        metrics: result.metrics
+      });
+      
+      // Check if all games are complete
+      if (this.activeGames.size === 0) {
+        this.sendMessage('ALL_GAMES_COMPLETE', {
+          stats: this.stats
+        });
       }
     }
   }
 
   /**
-   * Resume all games
+   * Load neural network from serialized data
+   * @param {Object} serializedModel - Serialized model data
+   * @returns {tf.LayersModel} Loaded model
    */
-  resumeGames() {
-    this.isRunning = true;
-    
-    // Resume paused games
-    for (const game of this.activeGames.values()) {
-      if (game.status === 'paused') {
-        game.status = 'running';
-        // Restart the game
-        this.startGame(game.id, game.config);
+  async loadNeuralNetwork(serializedModel) {
+    // This would load the actual model in a real implementation
+    // For now, return a placeholder
+    return {
+      predict: (input) => {
+        // Random action selection for now
+        const actions = ['W', 'A', 'S', 'D'];
+        const randomAction = actions[Math.floor(Math.random() * actions.length)];
+        return tf.tensor2d([[0.25, 0.25, 0.25, 0.25]]); // Equal probabilities
       }
-    }
+    };
   }
 
   /**
-   * Delay execution
-   * @param {number} ms - Milliseconds to delay
-   * @returns {Promise} Promise that resolves after delay
+   * Create policy agent
+   * @returns {Object} Policy agent
    */
-  delay(ms) {
+  createPolicyAgent() {
+    return {
+      makeDecision(gameState) {
+        // Simple random decision for now
+        const actions = ['W', 'A', 'S', 'D', 'NONE'];
+        const randomAction = actions[Math.floor(Math.random() * actions.length)];
+        
+        return {
+          action: randomAction,
+          confidence: 0.25,
+          probabilities: [0.25, 0.25, 0.25, 0.25]
+        };
+      }
+    };
+  }
+
+  /**
+   * Send message to main thread
+   * @param {string} type - Message type
+   * @param {*} data - Message data
+   */
+  sendMessage(type, data = null) {
+    self.postMessage({ type, data });
+  }
+
+  /**
+   * Send error message to main thread
+   * @param {string} type - Error type
+   * @param {Error} error - Error object
+   */
+  sendError(type, error) {
+    self.postMessage({ 
+      type: 'ERROR', 
+      data: { errorType: type, error: error.message, stack: error.stack }
+    });
+  }
+
+  /**
+   * Send game error message to main thread
+   * @param {string} gameId - Game ID
+   * @param {Error} error - Error object
+   */
+  sendGameError(gameId, error) {
+    self.postMessage({
+      type: 'GAME_ERROR',
+      data: { gameId, error: error.message }
+    });
+  }
+
+  /**
+   * Sleep for specified milliseconds
+   * @param {number} ms - Milliseconds to sleep
+   * @returns {Promise} Promise that resolves after sleep
+   */
+  sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 }
 
-// Create worker instance
+// Initialize worker
 const worker = new TrainingWorker();
 
-// Set up message handler
-self.onmessage = (event) => {
-  worker.handleMessage(event);
+// Handle messages from main thread
+self.onmessage = async (event) => {
+  const { type, data } = event.data;
+  
+  try {
+    switch (type) {
+      case 'INIT':
+        await worker.initialize();
+        break;
+        
+      case 'START_GAMES':
+        await worker.startGames(data.gameIds, data.config);
+        break;
+        
+      case 'STOP_GAMES':
+        worker.stopGames();
+        break;
+        
+      default:
+        console.warn(`Unknown message type: ${type}`);
+    }
+  } catch (error) {
+    console.error(`Worker error handling ${type}:`, error);
+    worker.sendError(`${type}_ERROR`, error);
+  }
 };
-
-// Handle errors
-self.onerror = (error) => {
-  console.error('TrainingWorker error:', error);
-  self.postMessage({
-    type: 'WORKER_ERROR',
-    data: { error: error.message }
-  });
-};
-
-// Notify that worker is ready
-self.postMessage({ type: 'WORKER_READY' });

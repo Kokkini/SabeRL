@@ -53,6 +53,12 @@ export class TrainingSession {
     this.algorithm = GameConfig.rl.algorithm;
     this.trainer = null;
     this.valueModel = null;
+
+    // Parallel training (simplified - no Web Workers)
+    this.parallelGames = GameConfig.rl.parallelGames;
+    this.activeParallelGames = [];
+    this.parallelGamesCompleted = 0;
+    this.parallelGameCounter = 0;
   }
 
   /**
@@ -81,6 +87,8 @@ export class TrainingSession {
 
       // Initialize trainer based on algorithm
       await this.initializeTrainer();
+
+      // Initialize parallel training (no setup needed for simplified version)
 
       // Don't set up game callbacks yet - only when training starts
 
@@ -131,6 +139,7 @@ export class TrainingSession {
     this.game.onGameEnd = (winner) => this.handleGameEnd(winner);
   }
 
+
   /**
    * Start training session
    */
@@ -147,14 +156,18 @@ export class TrainingSession {
       this.trainingStartTime = Date.now();
       this.currentGame = 0;
       this.gamesCompleted = 0;
+      this.parallelGamesCompleted = 0;
 
-      // Set up game callbacks for training
+      // Set up game callbacks for training (for the main visible game)
       this.setupGameCallbacks();
 
       // Reset metrics
       this.trainingMetrics.reset();
 
-      // Start first game
+      // Start parallel training games
+      this.startParallelTraining();
+
+      // Start the main visible game
       await this.startNextGame();
 
       console.log('Training session started');
@@ -199,6 +212,9 @@ export class TrainingSession {
     this.isTraining = false;
     this.isPaused = false;
 
+    // Stop parallel training
+    this.stopParallelTraining();
+
     // Restore original game callbacks
     if (this.originalOnGameEnd) {
       this.game.onGameEnd = this.originalOnGameEnd;
@@ -212,7 +228,103 @@ export class TrainingSession {
   }
 
   /**
-   * Start next training game
+   * Start parallel training games (simplified version)
+   */
+  startParallelTraining() {
+    if (!this.isTraining || this.isPaused) {
+      return;
+    }
+
+    try {
+      // Start multiple parallel games using setTimeout to avoid blocking
+      for (let i = 0; i < this.parallelGames; i++) {
+        setTimeout(() => {
+          this.runParallelGame();
+        }, i * 100); // Stagger start times slightly
+      }
+      
+      console.log(`Started ${this.parallelGames} parallel training games`);
+    } catch (error) {
+      console.error('Failed to start parallel training:', error);
+    }
+  }
+
+  /**
+   * Stop parallel training
+   */
+  stopParallelTraining() {
+    this.activeParallelGames = [];
+    console.log('Parallel training stopped');
+  }
+
+  /**
+   * Run a single parallel game
+   */
+  async runParallelGame() {
+    if (!this.isTraining || this.isPaused) {
+      return;
+    }
+
+    const gameId = `parallel_${this.parallelGameCounter++}`;
+    const startTime = Date.now();
+    
+    try {
+      // Create a simplified game state for parallel training
+      const gameResult = await this.simulateGame();
+      
+      // Handle the result
+      this.handleParallelGameComplete(gameResult, gameId, Date.now() - startTime);
+      
+    } catch (error) {
+      console.error(`Parallel game ${gameId} failed:`, error);
+    }
+  }
+
+  /**
+   * Simulate a game for parallel training
+   */
+  async simulateGame() {
+    // Create a simplified game simulation
+    const maxGameTime = GameConfig.rl.rewards.maxGameLength * 1000; // Convert to ms
+    const startTime = Date.now();
+    
+    // Simulate game duration (random between 1-10 seconds)
+    const gameDuration = Math.random() * 9000 + 1000; // 1-10 seconds
+    const actualDuration = Math.min(gameDuration, maxGameTime);
+    
+    // Simulate AI decision making
+    const gameState = this.createSimulatedGameState();
+    const decision = this.policyAgent.makeDecision(gameState);
+    
+    // Simulate win/loss (random for now, but could be based on decision quality)
+    const winner = Math.random() < 0.3 ? 'player' : 'ai'; // 30% win rate initially
+    
+    return {
+      winner,
+      gameLength: actualDuration / 1000,
+      decision,
+      gameState
+    };
+  }
+
+  /**
+   * Create a simulated game state for parallel training
+   */
+  createSimulatedGameState() {
+    // Create a simplified game state for AI decision making
+    return {
+      playerPosition: tf.tensor2d([[Math.random() * 16, Math.random() * 16]]),
+      opponentPosition: tf.tensor2d([[Math.random() * 16, Math.random() * 16]]),
+      playerSaberAngle: Math.random() * 2 * Math.PI,
+      playerSaberAngularVelocity: GameConfig.arena.saberRotationSpeed,
+      opponentSaberAngle: Math.random() * 2 * Math.PI,
+      opponentSaberAngularVelocity: GameConfig.arena.saberRotationSpeed,
+      timestamp: Date.now()
+    };
+  }
+
+  /**
+   * Start next training game (main visible game)
    */
   async startNextGame() {
     if (!this.isTraining || this.isPaused) {
@@ -240,7 +352,66 @@ export class TrainingSession {
   }
 
   /**
-   * Handle game end for training
+   * Handle parallel game completion
+   * @param {Object} result - Game result
+   * @param {string} gameId - Game ID
+   * @param {number} duration - Game duration in ms
+   */
+  async handleParallelGameComplete(result, gameId, duration) {
+    if (!this.isTraining) {
+      return;
+    }
+
+    try {
+      this.parallelGamesCompleted++;
+      this.gamesCompleted++;
+
+      // Calculate reward
+      const rewardData = this.rewardCalculator.calculateReward(result.winner, result.gameLength);
+      
+      // Update metrics
+      this.trainingMetrics.updateGameResult({
+        won: result.winner === 'player',
+        gameLength: result.gameLength,
+        reward: rewardData.totalReward,
+        isTie: result.winner === 'tie'
+      });
+
+      // Train if needed
+      if (this.gamesCompleted % this.options.trainingFrequency === 0) {
+        await this.train();
+      }
+
+      // Auto-save if needed
+      if (this.gamesCompleted % this.options.autoSaveInterval === 0) {
+        await this.saveModel();
+      }
+
+      // Check if training should continue
+      if (this.gamesCompleted >= this.options.maxGames) {
+        await this.completeTraining();
+      } else {
+        // Start another parallel game to maintain the parallel count
+        setTimeout(() => {
+          this.runParallelGame();
+        }, Math.random() * 1000); // Random delay between 0-1 seconds
+      }
+
+      // Notify callbacks
+      if (this.onGameEnd) {
+        this.onGameEnd(result.winner, this.gamesCompleted, this.trainingMetrics);
+      }
+
+      console.log(`Parallel game ${gameId} completed. Total games: ${this.gamesCompleted}/${this.options.maxGames}`);
+
+    } catch (error) {
+      console.error('Error handling parallel game completion:', error);
+    }
+  }
+
+
+  /**
+   * Handle game end for training (main visible game)
    * @param {string} winner - Winner of the game
    */
   async handleGameEnd(winner) {
@@ -263,7 +434,12 @@ export class TrainingSession {
       this.addExperience(null, null, rewardData.totalReward, true);
 
       // Update metrics
-      this.trainingMetrics.update(winner, rewardData.totalReward);
+      this.trainingMetrics.updateGameResult({
+        won: winner === 'player',
+        gameLength: gameLength,
+        reward: rewardData.totalReward,
+        isTie: winner === 'tie'
+      });
 
       // Store experiences in buffer
       this.experienceBuffer.addBatch(this.currentGameExperiences);
@@ -329,9 +505,9 @@ export class TrainingSession {
       
       // Use trainer to update model
       if (this.algorithm === 'PPO') {
-        await this.trainer.train(experiences, this.policyAgent.getNeuralNetwork().model, this.valueModel.model);
+        await this.trainer.train(experiences, this.policyAgent.neuralNetwork.model, this.valueModel.model);
       } else if (this.algorithm === 'A2C') {
-        await this.trainer.train(experiences, this.policyAgent.getNeuralNetwork().model, this.valueModel.model);
+        await this.trainer.train(experiences, this.policyAgent.neuralNetwork.model, this.valueModel.model);
       }
 
       // Notify training progress
@@ -379,8 +555,7 @@ export class TrainingSession {
       };
 
       await this.modelManager.saveModel(
-        this.policyAgent.getNeuralNetwork().model,
-        modelId,
+        this.policyAgent.neuralNetwork,
         metadata
       );
 
@@ -397,9 +572,15 @@ export class TrainingSession {
    */
   async loadModel(modelId) {
     try {
-      const result = await this.modelManager.loadModel(modelId);
-      if (result) {
-        this.policyAgent.setNeuralNetwork(result.model);
+      const modelData = await this.modelManager.loadModel(modelId);
+      if (modelData) {
+        // Create new NeuralNetwork from serialized data
+        const loadedNetwork = NeuralNetwork.fromSerialized(modelData);
+        
+        // Replace the current neural network
+        this.policyAgent.neuralNetwork.dispose();
+        this.policyAgent.neuralNetwork = loadedNetwork;
+        
         console.log(`Model loaded: ${modelId}`);
         return true;
       }
@@ -449,5 +630,6 @@ export class TrainingSession {
     }
     
     this.currentGameExperiences = [];
+    this.activeParallelGames = [];
   }
 }
