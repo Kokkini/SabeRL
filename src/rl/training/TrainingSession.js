@@ -17,7 +17,7 @@ export class TrainingSession {
   constructor(game, options = {}) {
     this.game = game;
     this.options = {
-      maxGames: options.maxGames || 1000,
+      maxGames: options.maxGames || GameConfig.rl.maxGames,
       autoSaveInterval: options.autoSaveInterval || GameConfig.rl.autoSaveInterval,
       trainingFrequency: options.trainingFrequency || GameConfig.rl.trainingFrequency,
       ...options
@@ -42,6 +42,9 @@ export class TrainingSession {
       maxSize: 10000,
       batchSize: this.options.trainingFrequency
     });
+
+    // Track last game result for UI
+    this.lastGameResult = null;
     this.currentGameExperiences = [];
 
     // Callbacks
@@ -367,7 +370,12 @@ export class TrainingSession {
       this.gamesCompleted++;
 
       // Calculate reward
-      const rewardData = this.rewardCalculator.calculateReward(result.winner, result.gameLength);
+      const rewardData = this.rewardCalculator.calculateReward({
+        won: result.winner === 'player',
+        lost: result.winner === 'ai',
+        isTie: result.winner === 'tie',
+        gameLength: result.gameLength
+      });
       
       // Update metrics
       this.trainingMetrics.updateGameResult({
@@ -399,10 +407,11 @@ export class TrainingSession {
 
       // Notify callbacks
       if (this.onGameEnd) {
+        console.log(`TrainingSession: Calling onGameEnd for parallel game ${gameId}, winner=${result.winner}, gamesCompleted=${this.gamesCompleted}`);
         this.onGameEnd(result.winner, this.gamesCompleted, this.trainingMetrics);
       }
 
-      console.log(`Parallel game ${gameId} completed. Total games: ${this.gamesCompleted}/${this.options.maxGames}`);
+      // console.log(`Parallel game ${gameId} completed. Total games: ${this.gamesCompleted}/${this.options.maxGames}`);
 
     } catch (error) {
       console.error('Error handling parallel game completion:', error);
@@ -425,10 +434,22 @@ export class TrainingSession {
 
     try {
       this.gamesCompleted++;
-      const gameLength = (Date.now() - this.game.startTime) / 1000;
+      const gameLength = this.game.stepCount;
 
       // Calculate reward
-      const rewardData = this.rewardCalculator.calculateReward(winner, gameLength);
+      const rewardData = this.rewardCalculator.calculateReward({
+        won: winner === 'player',
+        lost: winner === 'ai',
+        isTie: winner === 'tie',
+        gameLength: gameLength
+      });
+      
+      // Store last game result for UI
+      this.lastGameResult = {
+        won: winner === 'player',
+        gameLength: gameLength,
+        reward: rewardData.totalReward
+      };
       
       // Add final experience with reward
       this.addExperience(null, null, rewardData.totalReward, true);
@@ -466,6 +487,7 @@ export class TrainingSession {
 
       // Notify callbacks
       if (this.onGameEnd) {
+        console.log(`TrainingSession: Calling onGameEnd for main game, winner=${winner}, gamesCompleted=${this.gamesCompleted}`);
         this.onGameEnd(winner, this.gamesCompleted, this.trainingMetrics);
       }
 
@@ -512,6 +534,7 @@ export class TrainingSession {
 
       // Notify training progress
       if (this.onTrainingProgress) {
+        console.log(`TrainingSession: Calling onTrainingProgress, gamesCompleted=${this.trainingMetrics.gamesCompleted}`);
         this.onTrainingProgress(this.trainingMetrics);
       }
 

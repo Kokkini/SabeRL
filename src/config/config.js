@@ -119,7 +119,7 @@ export function applyDefaults(config) {
         win: 1.0,
         loss: -1.0,
         timePenalty: -0.01,
-        maxGameLength: 60
+        maxGameLength: 600
       }
     }
   };
@@ -250,6 +250,7 @@ export const GameConfig = {
     // Game settings
     decisionInterval: 4, // frames between AI decisions
     parallelGames: 10,   // number of parallel training games
+    maxGames: 100000,      // total number of games to train
     
     // Training algorithms
     algorithm: 'PPO', // 'PPO' or 'A2C'

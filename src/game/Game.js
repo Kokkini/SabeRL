@@ -28,6 +28,7 @@ export class Game {
     this.winner = null;
     this.startTime = 0;
     this.endTime = 0;
+    this.stepCount = 0;
     
     // Game entities
     this.arena = null;
@@ -186,6 +187,7 @@ export class Game {
     this.winner = null;
     this.startTime = Date.now();
     this.endTime = 0;
+    this.stepCount = 0;
     
     // No auto-restart timer to clear
     
@@ -237,6 +239,9 @@ export class Game {
     if (this.state !== GameConfig.game.states.PLAYING) {
       return;
     }
+    
+    // Increment step counter
+    this.stepCount++;
     
     // Update input system
     this.inputSystem.update(deltaTime);
@@ -319,6 +324,7 @@ export class Game {
     this.winner = null;
     this.startTime = 0;
     this.endTime = 0;
+    this.stepCount = 0;
     
     // Reset all entities
     this.resetGameEntities();

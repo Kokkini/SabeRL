@@ -450,9 +450,12 @@ class SabeRLArena {
    */
   async initializeTraining() {
     try {
+      // Wait for Chart.js to load before initializing TrainingUI
+      await this.waitForChartJS();
+
       // Create training session
       this.trainingSession = new TrainingSession(this.game, {
-        maxGames: 1000,
+        maxGames: GameConfig.rl.maxGames,
         autoSaveInterval: GameConfig.rl.autoSaveInterval,
         trainingFrequency: GameConfig.rl.trainingFrequency
       });
@@ -465,17 +468,37 @@ class SabeRLArena {
       this.trainingUI.initialize();
       this.trainingUI.setTrainingSession(this.trainingSession);
 
-      // Try to initialize chart after a short delay in case Chart.js is still loading
-      setTimeout(() => {
-        if (this.trainingUI) {
-          this.trainingUI.tryInitializeChart();
-        }
-      }, 100);
-
       console.log('Training system initialized');
     } catch (error) {
       console.error('Failed to initialize training system:', error);
     }
+  }
+
+  /**
+   * Wait for Chart.js to load
+   */
+  async waitForChartJS() {
+    return new Promise((resolve) => {
+      let attempts = 0;
+      const maxAttempts = 20; // 10 seconds max
+      
+      const checkChartJS = () => {
+        attempts++;
+        console.log(`Waiting for Chart.js (attempt ${attempts}/${maxAttempts})...`);
+        
+        if (typeof window.Chart === 'function') {
+          console.log('Chart.js loaded successfully!');
+          resolve();
+        } else if (attempts < maxAttempts) {
+          setTimeout(checkChartJS, 500); // Check every 500ms
+        } else {
+          console.warn('Chart.js did not load, but continuing anyway...');
+          resolve(); // Continue even if Chart.js fails to load
+        }
+      };
+      
+      checkChartJS();
+    });
   }
 
   /**

@@ -3,6 +3,8 @@
  * Tracks win rate, game length, rewards, and other training statistics
  */
 
+import { GameConfig } from '../../config/config.js';
+
 export class TrainingMetrics {
   constructor(data = {}) {
     this.winRate = data.winRate || 0;
@@ -160,7 +162,7 @@ export class TrainingMetrics {
    * @param {number} targetGames - Target number of games
    * @returns {number} Progress percentage (0-100)
    */
-  getProgressPercentage(targetGames = 1000) {
+  getProgressPercentage(targetGames = GameConfig.rl.maxGames) {
     return Math.min((this.gamesCompleted / targetGames) * 100, 100);
   }
 
