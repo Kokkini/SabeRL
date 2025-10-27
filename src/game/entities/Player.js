@@ -1,11 +1,14 @@
 /**
  * Player Entity - Human-controlled game character
  * Represents the human player in the arena combat game
+ * Now supports both human and AI control modes
  */
 
 // TensorFlow.js is loaded from CDN as a global 'tf' object
 import { Saber } from './Saber.js';
 import { GameConfig } from '../../config/config.js';
+import { PolicyAgent } from '../../rl/agents/PolicyAgent.js';
+import { GameState } from '../../rl/entities/GameState.js';
 
 export class Player {
   /**
@@ -27,6 +30,12 @@ export class Player {
       right: false
     };
     
+    // Control mode
+    this.controlMode = 'human'; // 'human' or 'ai'
+    this.policyAgent = null;
+    this.currentDecision = null;
+    this.decisionFrameCount = 0;
+    
     // Create saber for this player
     this.saber = new Saber(`${id}-saber`, id, GameConfig.saber.length);
     
@@ -39,10 +48,29 @@ export class Player {
    * Update player state
    * @param {Object} inputSystem - Input system to get key states
    * @param {number} deltaTime - Time since last update in seconds
+   * @param {Object} gameState - Game state for AI decisions
    */
-  update(inputSystem, deltaTime) {
+  update(inputSystem, deltaTime, gameState = null) {
     if (!this.isAlive) return;
 
+    if (this.controlMode === 'ai' && this.policyAgent) {
+      this.updateAI(inputSystem, deltaTime, gameState);
+    } else {
+      this.updateHuman(inputSystem, deltaTime);
+    }
+    
+    // Update saber
+    this.saber.update(deltaTime);
+    
+    this.lastUpdateTime = Date.now();
+  }
+
+  /**
+   * Update human control mode
+   * @param {Object} inputSystem - Input system to get key states
+   * @param {number} deltaTime - Time since last update in seconds
+   */
+  updateHuman(inputSystem, deltaTime) {
     // Update input state
     this.updateInputState(inputSystem);
     
@@ -54,11 +82,32 @@ export class Player {
     
     // Update position
     this.position = this.position.add(this.velocity.mul(deltaTime));
+  }
+
+  /**
+   * Update AI control mode
+   * @param {Object} inputSystem - Input system to get key states
+   * @param {number} deltaTime - Time since last update in seconds
+   * @param {Object} gameState - Game state for AI decisions
+   */
+  updateAI(inputSystem, deltaTime, gameState) {
+    if (!this.policyAgent || !gameState) return;
+
+    // Make AI decision
+    const decision = this.policyAgent.makeDecision(gameState);
+    this.currentDecision = decision;
     
-    // Update saber
-    this.saber.update(deltaTime);
+    // Convert decision to input state
+    this.convertDecisionToInputState(decision);
     
-    this.lastUpdateTime = Date.now();
+    // Calculate movement vector
+    const movementVector = this.calculateMovementVector();
+    
+    // Update velocity
+    this.velocity = movementVector.mul(this.movementSpeed);
+    
+    // Update position
+    this.position = this.position.add(this.velocity.mul(deltaTime));
   }
 
   /**
@@ -72,6 +121,34 @@ export class Player {
     this.inputState.left = inputSystem.isKeyPressed('KeyA');
     this.inputState.down = inputSystem.isKeyPressed('KeyS');
     this.inputState.right = inputSystem.isKeyPressed('KeyD');
+  }
+
+  /**
+   * Convert AI decision to input state
+   * @param {Object} decision - AI movement decision
+   */
+  convertDecisionToInputState(decision) {
+    // Reset input state
+    this.inputState.up = false;
+    this.inputState.left = false;
+    this.inputState.down = false;
+    this.inputState.right = false;
+    
+    // Set input based on decision
+    switch (decision.action) {
+      case 'W':
+        this.inputState.up = true;
+        break;
+      case 'A':
+        this.inputState.left = true;
+        break;
+      case 'S':
+        this.inputState.down = true;
+        break;
+      case 'D':
+        this.inputState.right = true;
+        break;
+    }
   }
 
   /**
@@ -304,12 +381,90 @@ export class Player {
   }
 
   /**
+   * Set control mode
+   * @param {string} mode - Control mode ('human' or 'ai')
+   * @param {PolicyAgent} policyAgent - Policy agent for AI mode
+   */
+  setControlMode(mode, policyAgent = null) {
+    if (mode !== 'human' && mode !== 'ai') {
+      throw new Error(`Invalid control mode: ${mode}. Must be 'human' or 'ai'`);
+    }
+    
+    this.controlMode = mode;
+    
+    if (mode === 'ai') {
+      if (!policyAgent) {
+        throw new Error('Policy agent is required for AI control mode');
+      }
+      this.policyAgent = policyAgent;
+      this.policyAgent.activate();
+    } else {
+      if (this.policyAgent) {
+        this.policyAgent.deactivate();
+      }
+      this.policyAgent = null;
+      this.currentDecision = null;
+      this.decisionFrameCount = 0;
+    }
+    
+    console.log(`Player ${this.id} control mode set to: ${mode}`);
+  }
+
+  /**
+   * Get control mode
+   * @returns {string} Current control mode
+   */
+  getControlMode() {
+    return this.controlMode;
+  }
+
+  /**
+   * Check if player is AI controlled
+   * @returns {boolean} True if AI controlled
+   */
+  isAIControlled() {
+    return this.controlMode === 'ai';
+  }
+
+  /**
+   * Get current AI decision
+   * @returns {Object} Current AI decision
+   */
+  getCurrentDecision() {
+    return this.currentDecision;
+  }
+
+  /**
+   * Set policy agent
+   * @param {PolicyAgent} policyAgent - Policy agent
+   */
+  setPolicyAgent(policyAgent) {
+    if (this.controlMode === 'ai' && this.policyAgent) {
+      this.policyAgent.deactivate();
+    }
+    
+    this.policyAgent = policyAgent;
+    
+    if (this.controlMode === 'ai' && policyAgent) {
+      policyAgent.activate();
+    }
+  }
+
+  /**
+   * Get policy agent
+   * @returns {PolicyAgent} Policy agent
+   */
+  getPolicyAgent() {
+    return this.policyAgent;
+  }
+
+  /**
    * Get string representation
    * @returns {string} String representation
    */
   toString() {
     const pos = this.position.dataSync();
-    return `Player(${this.id}, pos: (${pos[0].toFixed(2)}, ${pos[1].toFixed(2)}), alive: ${this.isAlive})`;
+    return `Player(${this.id}, pos: (${pos[0].toFixed(2)}, ${pos[1].toFixed(2)}), alive: ${this.isAlive}, mode: ${this.controlMode})`;
   }
 
   /**
@@ -318,5 +473,9 @@ export class Player {
   dispose() {
     this.position.dispose();
     this.velocity.dispose();
+    
+    if (this.policyAgent) {
+      this.policyAgent.dispose();
+    }
   }
 }

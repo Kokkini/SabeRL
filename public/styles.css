@@ -268,6 +268,248 @@ footer {
     }
 }
 
+/* RL Training Controls */
+.control-group {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 10px;
+    padding: 15px;
+    margin: 10px 0;
+    border: 2px solid #333;
+}
+
+.control-group h3 {
+    color: #4a9eff;
+    margin-bottom: 10px;
+    font-size: 1.1em;
+}
+
+.control-button {
+    background: linear-gradient(45deg, #4a9eff, #357abd);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 1em;
+    font-weight: bold;
+    transition: all 0.3s ease;
+    margin: 5px;
+    min-width: 120px;
+}
+
+.control-button:hover {
+    background: linear-gradient(45deg, #357abd, #2a5f8f);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.control-button:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.control-button.active {
+    background: linear-gradient(45deg, #ff6b6b, #e55353);
+}
+
+.control-button.active:hover {
+    background: linear-gradient(45deg, #e55353, #cc4a4a);
+}
+
+#control-status {
+    margin-top: 10px;
+    padding: 8px 12px;
+    background: rgba(74, 158, 255, 0.2);
+    border: 1px solid #4a9eff;
+    border-radius: 5px;
+    font-weight: bold;
+    color: #4a9eff;
+    display: inline-block;
+    min-width: 120px;
+}
+
+#control-status.ai-active {
+    background: rgba(255, 107, 107, 0.2);
+    border-color: #ff6b6b;
+    color: #ff6b6b;
+}
+
+/* Training Status Indicators */
+.training-indicator {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.training-indicator.inactive {
+    background: #666;
+}
+
+.training-indicator.active {
+    background: #4a9eff;
+    animation: pulse 1.5s infinite;
+}
+
+.training-indicator.training {
+    background: #ff6b6b;
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+/* AI Decision Display */
+.ai-decision {
+    margin-top: 10px;
+    padding: 8px;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 5px;
+    font-family: monospace;
+    font-size: 0.9em;
+}
+
+.ai-decision .action {
+    color: #4a9eff;
+    font-weight: bold;
+}
+
+.ai-decision .confidence {
+    color: #ffd700;
+}
+
+.ai-decision .probabilities {
+    color: #cccccc;
+    font-size: 0.8em;
+}
+
+/* Training UI Styles */
+.training-controls {
+    width: 100%;
+}
+
+.control-buttons {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+}
+
+.training-status {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.status-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 8px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 5px;
+    border: 1px solid #333;
+}
+
+.status-label {
+    font-size: 0.8em;
+    color: #cccccc;
+    margin-bottom: 4px;
+}
+
+.status-value {
+    font-size: 1.1em;
+    font-weight: bold;
+    color: #4a9eff;
+}
+
+.progress-container {
+    margin-bottom: 15px;
+}
+
+.progress-label {
+    font-size: 0.9em;
+    color: #cccccc;
+    margin-bottom: 5px;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 20px;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #333;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #4a9eff, #357abd);
+    width: 0%;
+    transition: width 0.3s ease;
+}
+
+.metrics-display {
+    margin-bottom: 15px;
+}
+
+.metrics-display h4 {
+    color: #4a9eff;
+    margin-bottom: 10px;
+    font-size: 1em;
+}
+
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 8px;
+}
+
+.metric-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 6px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    border: 1px solid #444;
+}
+
+.metric-label {
+    font-size: 0.7em;
+    color: #aaaaaa;
+    margin-bottom: 2px;
+}
+
+.metric-value {
+    font-size: 0.9em;
+    font-weight: bold;
+    color: #ffffff;
+}
+
+.chart-container {
+    margin-top: 15px;
+}
+
+.chart-container h4 {
+    color: #4a9eff;
+    margin-bottom: 10px;
+    font-size: 1em;
+}
+
+.chart-container canvas {
+    max-width: 100%;
+    height: 200px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 5px;
+    border: 1px solid #333;
+}
+
 /* Print styles */
 @media print {
     body {

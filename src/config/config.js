@@ -3,11 +3,155 @@
  * All game parameters are centralized here for easy tuning
  */
 
+/**
+ * Validate configuration values
+ * @param {Object} config - Configuration object to validate
+ * @returns {Object} Validation result
+ */
+export function validateConfig(config = GameConfig) {
+  const errors = [];
+  const warnings = [];
+
+  // Validate arena configuration
+  if (config.arena.playerRadius <= 0) {
+    errors.push('Player radius must be positive');
+  }
+  if (config.arena.saberLength <= 0) {
+    errors.push('Saber length must be positive');
+  }
+
+  // Validate game configuration
+  if (config.game.playerSpeed <= 0) {
+    errors.push('Player speed must be positive');
+  }
+  if (config.game.aiSpeed <= 0) {
+    errors.push('AI speed must be positive');
+  }
+
+  // Validate RL configuration
+  if (config.rl.learningRate <= 0 || config.rl.learningRate > 1) {
+    errors.push('Learning rate must be between 0 and 1');
+  }
+  if (config.rl.explorationRate < 0 || config.rl.explorationRate > 1) {
+    errors.push('Exploration rate must be between 0 and 1');
+  }
+  if (config.rl.batchSize <= 0) {
+    errors.push('Batch size must be positive');
+  }
+  if (config.rl.discountFactor < 0 || config.rl.discountFactor > 1) {
+    errors.push('Discount factor must be between 0 and 1');
+  }
+  if (config.rl.decisionInterval <= 0) {
+    errors.push('Decision interval must be positive');
+  }
+  if (config.rl.parallelGames <= 0) {
+    errors.push('Parallel games must be positive');
+  }
+
+  // Validate neural network architecture
+  if (!Array.isArray(config.rl.hiddenLayers) || config.rl.hiddenLayers.length === 0) {
+    errors.push('Hidden layers must be a non-empty array');
+  }
+  for (const layer of config.rl.hiddenLayers) {
+    if (layer <= 0) {
+      errors.push('Hidden layer size must be positive');
+    }
+  }
+
+  // Validate reward structure
+  if (config.rl.rewards.win <= 0) {
+    warnings.push('Win reward should be positive');
+  }
+  if (config.rl.rewards.loss >= 0) {
+    warnings.push('Loss reward should be negative');
+  }
+  if (config.rl.rewards.timePenalty > 0) {
+    warnings.push('Time penalty should be negative');
+  }
+
+  // Validate performance settings
+  if (config.rl.maxMemoryUsage <= 0) {
+    errors.push('Max memory usage must be positive');
+  }
+  if (config.rl.autoSaveInterval <= 0) {
+    errors.push('Auto-save interval must be positive');
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors,
+    warnings
+  };
+}
+
+/**
+ * Apply default values to configuration
+ * @param {Object} config - Configuration object
+ * @returns {Object} Configuration with defaults applied
+ */
+export function applyDefaults(config) {
+  const defaults = {
+    arena: {
+      width: 16,
+      height: 16,
+      playerRadius: 1,
+      saberLength: 2,
+      saberRotationSpeed: 2 * Math.PI
+    },
+    game: {
+      playerSpeed: 5,
+      aiSpeed: 5,
+      aiDirectionChangeInterval: { min: 0.5, max: 2.0 }
+    },
+    rl: {
+      hiddenLayers: [128, 64, 32],
+      learningRate: 0.001,
+      explorationRate: 0.1,
+      batchSize: 32,
+      discountFactor: 0.99,
+      decisionInterval: 4,
+      parallelGames: 10,
+      algorithm: 'PPO',
+      maxMemoryUsage: 2 * 1024 * 1024 * 1024,
+      autoSaveInterval: 50,
+      performanceMonitoring: true,
+      rewards: {
+        win: 1.0,
+        loss: -1.0,
+        timePenalty: -0.01,
+        maxGameLength: 60
+      }
+    }
+  };
+
+  return mergeDeep(defaults, config);
+}
+
+/**
+ * Deep merge objects
+ * @param {Object} target - Target object
+ * @param {Object} source - Source object
+ * @returns {Object} Merged object
+ */
+function mergeDeep(target, source) {
+  const result = { ...target };
+  
+  for (const key in source) {
+    if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+      result[key] = mergeDeep(target[key] || {}, source[key]);
+    } else {
+      result[key] = source[key];
+    }
+  }
+  
+  return result;
+}
+
 export const GameConfig = {
   // Arena settings
   arena: {
-    width: 20,        // Arena width in units
-    height: 20,       // Arena height in units
+    width: 16,        // Arena width in units
+    height: 16,       // Arena height in units
     backgroundColor: '#1a1a1a',
     borderColor: '#ffffff',
     borderWidth: 2
@@ -88,42 +232,43 @@ export const GameConfig = {
     minFirefoxVersion: 52,
     minSafariVersion: 11,
     requiredFeatures: ['Canvas', 'requestAnimationFrame', 'addEventListener']
+  },
+
+  // RL Training settings
+  rl: {
+    // Neural network architecture
+    hiddenLayers: [128, 64, 32],
+    
+    // Training parameters
+    learningRate: 0.001,
+    explorationRate: 0.3, // Higher exploration for untrained network
+    batchSize: 32,
+    rewardScaling: 1.0,
+    discountFactor: 0.99,
+    trainingFrequency: 1, // Train every N games
+    
+    // Game settings
+    decisionInterval: 4, // frames between AI decisions
+    parallelGames: 10,   // number of parallel training games
+    
+    // Training algorithms
+    algorithm: 'PPO', // 'PPO' or 'A2C'
+    
+    // Performance settings
+    maxMemoryUsage: 2 * 1024 * 1024 * 1024, // 2GB
+    autoSaveInterval: 50, // Auto-save every N games
+    performanceMonitoring: true,
+    
+    // Reward structure
+    rewards: {
+      win: 1.0,
+      loss: -1.0,
+      timePenalty: -0.01, // Per second penalty
+      maxGameLength: 60   // Max game length in seconds
+    }
   }
 };
 
-/**
- * Validate configuration values
- * @returns {boolean} True if configuration is valid
- */
-export function validateConfig() {
-  const config = GameConfig;
-  
-  // Validate arena dimensions
-  if (config.arena.width <= 0 || config.arena.height <= 0) {
-    console.error('Invalid arena dimensions');
-    return false;
-  }
-  
-  // Validate player settings
-  if (config.player.radius <= 0 || config.player.movementSpeed <= 0) {
-    console.error('Invalid player settings');
-    return false;
-  }
-  
-  // Validate saber settings
-  if (config.saber.length <= 0 || config.saber.rotationSpeed <= 0) {
-    console.error('Invalid saber settings');
-    return false;
-  }
-  
-  // Validate AI settings
-  if (config.ai.directionChangeMin >= config.ai.directionChangeMax) {
-    console.error('Invalid AI direction change intervals');
-    return false;
-  }
-  
-  return true;
-}
 
 /**
  * Get configuration with fallback values

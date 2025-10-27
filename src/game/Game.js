@@ -252,7 +252,9 @@ export class Game {
     
     // Update all players
     for (const player of this.players) {
-      player.update(this.inputSystem, deltaTime);
+      // Create game state for AI decisions
+      const gameState = this.createGameState(player);
+      player.update(this.inputSystem, deltaTime, gameState);
     }
     
     // Update all AIs
@@ -457,6 +459,44 @@ export class Game {
   isGameOver() {
     return this.state === GameConfig.game.states.GAME_OVER || 
            this.state === GameConfig.game.states.TIE;
+  }
+
+  /**
+   * Get the player entity
+   * @returns {Player} Player entity
+   */
+  getPlayer() {
+    return this.players.length > 0 ? this.players[0] : null;
+  }
+
+  /**
+   * Get the AI entity
+   * @returns {AI} AI entity
+   */
+  getAI() {
+    return this.ais.length > 0 ? this.ais[0] : null;
+  }
+
+  /**
+   * Create game state for AI decisions
+   * @param {Player} player - Player entity
+   * @returns {Object} Game state object
+   */
+  createGameState(player) {
+    const ai = this.getAI();
+    if (!ai) {
+      return null;
+    }
+
+    return {
+      playerPosition: player.getPosition(),
+      opponentPosition: ai.getPosition(),
+      playerSaberAngle: player.getSaber().getAngle(),
+      playerSaberAngularVelocity: player.getSaber().getRotationSpeed(),
+      opponentSaberAngle: ai.getSaber().getAngle(),
+      opponentSaberAngularVelocity: ai.getSaber().getRotationSpeed(),
+      timestamp: Date.now()
+    };
   }
 
   /**

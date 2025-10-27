@@ -42,6 +42,14 @@
                         <p>• Sabers rotate automatically</p>
                         <p>• Stay within arena boundaries</p>
                     </div>
+                    <div class="control-group">
+                        <h3>RL Training</h3>
+                        <button id="ai-control-toggle" class="control-button">Enable AI Control</button>
+                        <div id="control-status">Human Control</div>
+                    </div>
+                    <div id="training-ui" class="control-group">
+                        <!-- Training UI will be dynamically created here -->
+                    </div>
                 </div>
             </div>
         </main>
@@ -53,6 +61,8 @@
     
     <!-- Load TensorFlow.js from CDN -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
+    <!-- Load Chart.js from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     <script src="src/main.js" type="module"></script>
     <script>
         // Fallback for browsers without ES6 module support

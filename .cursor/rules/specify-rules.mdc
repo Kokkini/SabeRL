@@ -3,6 +3,8 @@
 Auto-generated from all feature plans. Last updated: 2025-10-26
 
 ## Active Technologies
+- JavaScript ES6+, HTML5, CSS3 + TensorFlow.js Core (@tensorflow/tfjs-core), HTML5 Canvas API, Web Workers (001-rl-agent-training)
+- Browser localStorage for model weights and training data (001-rl-agent-training)
 
 - JavaScript ES6+, HTML5, CSS3 + HTML5 Canvas API, Web APIs (requestAnimationFrame, addEventListener) (001-base-game-arena)
 
@@ -23,6 +25,7 @@ npm test && npm run lint
 JavaScript ES6+, HTML5, CSS3: Follow standard conventions
 
 ## Recent Changes
+- 001-rl-agent-training: Added JavaScript ES6+, HTML5, CSS3 + TensorFlow.js Core (@tensorflow/tfjs-core), HTML5 Canvas API, Web Workers
 
 - 001-base-game-arena: Added JavaScript ES6+, HTML5, CSS3 + HTML5 Canvas API, Web APIs (requestAnimationFrame, addEventListener)
 

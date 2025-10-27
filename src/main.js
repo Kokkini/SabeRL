@@ -7,6 +7,10 @@
 import { GameConfig, validateConfig } from './config/config.js';
 import { Game } from './game/Game.js';
 import { GameLoop } from './game/GameLoop.js';
+import { PolicyAgent } from './rl/agents/PolicyAgent.js';
+import { NeuralNetwork } from './rl/agents/NeuralNetwork.js';
+import { TrainingSession } from './rl/training/TrainingSession.js';
+import { TrainingUI } from './rl/visualization/TrainingUI.js';
 
 /**
  * Main game class that manages the entire application
@@ -22,6 +26,16 @@ class SabeRLArena {
       player: 0,
       ai: 0
     };
+    
+    // AI Control state
+    this.isAIControlEnabled = false;
+    this.policyAgent = null;
+    this.aiControlToggle = null;
+    this.controlStatusElement = null;
+    
+    // Training state
+    this.trainingSession = null;
+    this.trainingUI = null;
   }
 
   /**
@@ -81,6 +95,12 @@ class SabeRLArena {
 
       // Set up UI
       this.setupUI();
+
+      // Initialize AI control
+      this.initializeAIControl();
+
+      // Initialize training system
+      this.initializeTraining();
 
       // Initialize scoreboard
       this.updateScoreboard();
@@ -191,6 +211,14 @@ class SabeRLArena {
 
     // Make canvas focusable
     this.canvas.tabIndex = 0;
+
+    // AI Control toggle
+    this.aiControlToggle = document.getElementById('ai-control-toggle');
+    if (this.aiControlToggle) {
+      this.aiControlToggle.addEventListener('click', () => {
+        this.toggleAIControl();
+      });
+    }
   }
 
   /**
@@ -384,6 +412,166 @@ class SabeRLArena {
   }
 
   /**
+   * Initialize AI control system
+   */
+  initializeAIControl() {
+    try {
+      // Get control status element
+      this.controlStatusElement = document.getElementById('control-status');
+      
+      // Create neural network and policy agent
+      const neuralNetwork = new NeuralNetwork({
+        architecture: {
+          inputSize: 9, // Updated to match GameStateProcessor output (4 pos + 2 angles + 2 velocity + 1 distance)
+          hiddenLayers: GameConfig.rl.hiddenLayers,
+          outputSize: 4,
+          activation: 'relu'
+        }
+      });
+      
+      this.policyAgent = new PolicyAgent({
+        neuralNetwork: neuralNetwork,
+        decisionInterval: GameConfig.rl.decisionInterval,
+        explorationRate: GameConfig.rl.explorationRate
+      });
+      
+      // Initialize AI control UI state
+      this.updateControlStatus('Human Control', false);
+      this.updateControlButton('Enable AI Control', false);
+      
+      console.log('AI control system initialized');
+    } catch (error) {
+      console.error('Failed to initialize AI control:', error);
+    }
+  }
+
+  /**
+   * Initialize training system
+   */
+  async initializeTraining() {
+    try {
+      // Create training session
+      this.trainingSession = new TrainingSession(this.game, {
+        maxGames: 1000,
+        autoSaveInterval: GameConfig.rl.autoSaveInterval,
+        trainingFrequency: GameConfig.rl.trainingFrequency
+      });
+
+      // Initialize training session
+      await this.trainingSession.initialize();
+
+      // Create training UI
+      this.trainingUI = new TrainingUI('training-ui');
+      this.trainingUI.initialize();
+      this.trainingUI.setTrainingSession(this.trainingSession);
+
+      // Try to initialize chart after a short delay in case Chart.js is still loading
+      setTimeout(() => {
+        if (this.trainingUI) {
+          this.trainingUI.tryInitializeChart();
+        }
+      }, 100);
+
+      console.log('Training system initialized');
+    } catch (error) {
+      console.error('Failed to initialize training system:', error);
+    }
+  }
+
+  /**
+   * Toggle AI control mode
+   */
+  toggleAIControl() {
+    if (!this.game || !this.policyAgent) {
+      console.error('Game or policy agent not available');
+      return;
+    }
+
+    try {
+      this.isAIControlEnabled = !this.isAIControlEnabled;
+      
+      if (this.isAIControlEnabled) {
+        // Enable AI control
+        const player = this.game.getPlayer();
+        if (player) {
+          player.setControlMode('ai', this.policyAgent);
+          this.updateControlStatus('AI Control', true);
+          this.updateControlButton('Disable AI Control', true);
+          console.log('AI control enabled');
+        }
+      } else {
+        // Disable AI control
+        const player = this.game.getPlayer();
+        if (player) {
+          player.setControlMode('human');
+          this.updateControlStatus('Human Control', false);
+          this.updateControlButton('Enable AI Control', false);
+          console.log('AI control disabled');
+        }
+      }
+    } catch (error) {
+      console.error('Failed to toggle AI control:', error);
+    }
+  }
+
+  /**
+   * Update control status display
+   * @param {string} status - Status text
+   * @param {boolean} isAI - Whether AI is active
+   */
+  updateControlStatus(status, isAI) {
+    if (this.controlStatusElement) {
+      this.controlStatusElement.textContent = status;
+      this.controlStatusElement.className = isAI ? 'ai-active' : '';
+    }
+  }
+
+  /**
+   * Update control button
+   * @param {string} text - Button text
+   * @param {boolean} isActive - Whether button is active
+   */
+  updateControlButton(text, isActive) {
+    if (this.aiControlToggle) {
+      this.aiControlToggle.textContent = text;
+      this.aiControlToggle.className = isActive ? 'control-button active' : 'control-button';
+    }
+  }
+
+  /**
+   * Get AI decision display
+   * @returns {string} HTML for AI decision display
+   */
+  getAIDecisionDisplay() {
+    if (!this.isAIControlEnabled || !this.game) {
+      return '';
+    }
+
+    const player = this.game.getPlayer();
+    if (!player || !player.isAIControlled()) {
+      return '';
+    }
+
+    const decision = player.getCurrentDecision();
+    if (!decision) {
+      return '';
+    }
+
+    return `
+      <div class="ai-decision">
+        Action: <span class="action">${decision.action}</span> | 
+        Confidence: <span class="confidence">${(decision.confidence * 100).toFixed(1)}%</span>
+        <div class="probabilities">
+          W: ${(decision.probabilities[0] * 100).toFixed(1)}% | 
+          A: ${(decision.probabilities[1] * 100).toFixed(1)}% | 
+          S: ${(decision.probabilities[2] * 100).toFixed(1)}% | 
+          D: ${(decision.probabilities[3] * 100).toFixed(1)}%
+        </div>
+      </div>
+    `;
+  }
+
+  /**
    * Clean up resources
    */
   destroy() {
@@ -394,6 +582,18 @@ class SabeRLArena {
     if (this.game) {
       this.game.stop();
       this.game.dispose();
+    }
+    
+    if (this.policyAgent) {
+      this.policyAgent.dispose();
+    }
+    
+    if (this.trainingSession) {
+      this.trainingSession.dispose();
+    }
+    
+    if (this.trainingUI) {
+      this.trainingUI.dispose();
     }
     
     this.isInitialized = false;
