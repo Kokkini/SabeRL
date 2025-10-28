@@ -5,6 +5,7 @@
 
 // TensorFlow.js is loaded from CDN as a global 'tf' object
 import { GameConfig } from '../../config/config.js';
+import { GameStateProcessor } from '../utils/GameStateProcessor.js';
 
 export class A2CTrainer {
   constructor(options = {}) {
@@ -20,6 +21,14 @@ export class A2CTrainer {
     // Optimizers
     this.policyOptimizer = tf.train.adam(this.options.learningRate);
     this.valueOptimizer = tf.train.adam(this.options.learningRate);
+    
+    // Game state processor for converting raw game states to feature arrays
+    this.stateProcessor = new GameStateProcessor({
+      normalizePositions: true,
+      normalizeAngles: true,
+      includeVelocity: true,
+      includeDistance: true
+    });
 
     // Training statistics
     this.trainingStats = {
@@ -78,8 +87,82 @@ export class A2CTrainer {
       }
     }
 
+    // Handle empty states array
+    if (states.length === 0) {
+      console.warn('A2C: No valid states found, returning empty tensors');
+      return {
+        states: tf.tensor2d([], [0, 9]), // Empty tensor with correct shape
+        actions: tf.tensor1d([], 'int32'),
+        rewards: tf.tensor1d([]),
+        values: tf.tensor1d([]),
+        dones: tf.tensor1d([])
+      };
+    }
+
+    // Ensure states is a 2D array
+    const statesArray = states.map(state => {
+      if (Array.isArray(state)) {
+        return state;
+      } else if (state && typeof state === 'object' && state.data) {
+        // If it's a TensorFlow tensor, convert to array
+        return Array.from(state.dataSync());
+      } else if (state && typeof state === 'object' && state.playerPosition) {
+        // If it's a raw game state object, process it
+        try {
+          // Create a safe copy of the state to avoid tensor disposal issues
+          let playerPos, opponentPos;
+          
+          try {
+            // Try to clone tensors if they exist and aren't disposed
+            if (state.playerPosition && !state.playerPosition.isDisposed) {
+              playerPos = state.playerPosition.clone();
+            } else {
+              // Fallback to default position
+              playerPos = tf.tensor2d([[8, 8]]);
+            }
+          } catch (e) {
+            playerPos = tf.tensor2d([[8, 8]]);
+          }
+          
+          try {
+            if (state.opponentPosition && !state.opponentPosition.isDisposed) {
+              opponentPos = state.opponentPosition.clone();
+            } else {
+              opponentPos = tf.tensor2d([[12, 12]]);
+            }
+          } catch (e) {
+            opponentPos = tf.tensor2d([[12, 12]]);
+          }
+          
+          const stateCopy = {
+            playerPosition: playerPos,
+            opponentPosition: opponentPos,
+            playerSaberAngle: state.playerSaberAngle || 0,
+            playerSaberAngularVelocity: state.playerSaberAngularVelocity || 0,
+            opponentSaberAngle: state.opponentSaberAngle || 0,
+            opponentSaberAngularVelocity: state.opponentSaberAngularVelocity || 0,
+            timestamp: state.timestamp || Date.now()
+          };
+          
+          const result = this.stateProcessor.processState(stateCopy);
+          
+          // Clean up cloned tensors
+          playerPos.dispose();
+          opponentPos.dispose();
+          
+          return result;
+        } catch (error) {
+          console.warn('A2C: Error processing game state:', error);
+          return new Array(9).fill(0); // Default state
+        }
+      } else {
+        console.warn('A2C: Unexpected state format:', state);
+        return new Array(9).fill(0); // Default state
+      }
+    });
+
     return {
-      states: tf.tensor2d(states),
+      states: tf.tensor2d(statesArray, [statesArray.length, statesArray[0]?.length || 9]),
       actions: tf.tensor1d(actions, 'int32'),
       rewards: tf.tensor1d(rewards),
       values: tf.tensor1d(values),
@@ -114,7 +197,10 @@ export class A2CTrainer {
       );
 
       // Compute value loss (critic loss)
-      const valueLoss = this.computeValueLoss(valueOutput, returns);
+      // Ensure shapes match for meanSquaredError
+      const valueOutputSqueezed = valueOutput.squeeze();
+      const returnsSqueezed = returns.squeeze();
+      const valueLoss = this.computeValueLoss(valueOutputSqueezed, returnsSqueezed);
 
       // Compute entropy bonus
       const entropy = this.computeEntropy(actionProbs);
@@ -122,27 +208,49 @@ export class A2CTrainer {
       // Total loss for policy
       const totalPolicyLoss = policyLoss.sub(entropy.mul(this.options.entropyCoeff));
 
-      // Compute gradients
-      const policyGradients = this.policyOptimizer.computeGradients(
-        () => totalPolicyLoss,
-        policyModel.trainableVariables
+      // Update models using minimize
+      this.policyOptimizer.minimize(() => {
+        // Recompute policy predictions inside gradient function
+        const policyOutput = policyModel.predict(data.states);
+        const actionProbs = tf.softmax(policyOutput);
+        const logProbs = tf.log(actionProbs.add(1e-8));
+        
+        // Compute policy loss
+        const policyLoss = this.computePolicyLoss(
+          logProbs,
+          data.actions,
+          advantages
+        );
+        
+        // Compute entropy bonus
+        const entropy = this.computeEntropy(actionProbs);
+        
+        // Total loss for policy
+        return policyLoss.sub(entropy.mul(this.options.entropyCoeff));
+      });
+
+      this.valueOptimizer.minimize(() => {
+        // Recompute value predictions inside gradient function
+        const valueOutput = valueModel.predict(data.states);
+        const valueOutputSqueezed = valueOutput.squeeze();
+        const returnsSqueezed = returns.squeeze();
+        return this.computeValueLoss(valueOutputSqueezed, returnsSqueezed);
+      });
+
+      // Update statistics (compute values for stats)
+      const finalPolicyOutput = policyModel.predict(data.states);
+      const finalActionProbs = tf.softmax(finalPolicyOutput);
+      const finalLogProbs = tf.log(finalActionProbs.add(1e-8));
+      const finalEntropy = this.computeEntropy(finalActionProbs);
+      
+      // Compute policy loss for statistics
+      const finalPolicyLoss = this.computePolicyLoss(
+        finalLogProbs,
+        data.actions,
+        advantages
       );
-
-      const valueGradients = this.valueOptimizer.computeGradients(
-        () => valueLoss,
-        valueModel.trainableVariables
-      );
-
-      // Clip gradients
-      const clippedPolicyGradients = this.clipGradients(policyGradients);
-      const clippedValueGradients = this.clipGradients(valueGradients);
-
-      // Apply gradients
-      this.policyOptimizer.applyGradients(clippedPolicyGradients);
-      this.valueOptimizer.applyGradients(clippedValueGradients);
-
-      // Update statistics
-      this.updateStats(policyLoss, valueLoss, entropy);
+      
+      this.updateStats(finalPolicyLoss, valueLoss, finalEntropy);
     });
   }
 
@@ -203,7 +311,10 @@ export class A2CTrainer {
    */
   computePolicyLoss(logProbs, actions, advantages) {
     // Get log probability of taken actions
-    const actionLogProbs = tf.gather(logProbs, actions, 1).squeeze();
+    // logProbs shape: [batchSize, 4], actions shape: [batchSize]
+    // Use oneHot to create mask and mul to select action log probabilities
+    const actionMask = tf.oneHot(actions.cast('int32'), 4);
+    const actionLogProbs = tf.sum(logProbs.mul(actionMask), 1);
 
     // Policy loss is negative log probability weighted by advantages
     const policyLoss = actionLogProbs.mul(advantages).neg().mean();

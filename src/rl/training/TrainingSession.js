@@ -40,7 +40,7 @@ export class TrainingSession {
     // Experience storage
     this.experienceBuffer = new ExperienceBuffer({
       maxSize: 10000,
-      batchSize: this.options.trainingFrequency
+      batchSize: 32 // Use a proper batch size for training
     });
 
     // Track last game result for UI
@@ -81,11 +81,17 @@ export class TrainingSession {
         }
       });
 
-      // Create policy agent
+      // Create policy agent with experience collection callback
       this.policyAgent = new PolicyAgent({
         neuralNetwork: neuralNetwork,
         decisionInterval: GameConfig.rl.decisionInterval,
-        explorationRate: GameConfig.rl.explorationRate
+        explorationRate: GameConfig.rl.explorationRate,
+        onExperience: (experience) => this.addExperience(
+          experience.state,
+          experience.action,
+          experience.reward,
+          experience.isTerminal
+        )
       });
 
       // Initialize trainer based on algorithm
@@ -140,6 +146,7 @@ export class TrainingSession {
     // Override game callbacks for training
     this.originalOnGameEnd = this.game.onGameEnd;
     this.game.onGameEnd = (winner) => this.handleGameEnd(winner);
+    console.log('Game callbacks set up for training');
   }
 
 
@@ -171,6 +178,7 @@ export class TrainingSession {
       this.startParallelTraining();
 
       // Start the main visible game
+      console.log('Starting main visible game...');
       await this.startNextGame();
 
       console.log('Training session started');
@@ -234,6 +242,7 @@ export class TrainingSession {
    * Start parallel training games (simplified version)
    */
   startParallelTraining() {
+    console.log('startParallelTraining (simplified version) called: isTraining=', this.isTraining, 'isPaused=', this.isPaused);
     if (!this.isTraining || this.isPaused) {
       return;
     }
@@ -331,24 +340,28 @@ export class TrainingSession {
    */
   async startNextGame() {
     if (!this.isTraining || this.isPaused) {
+      console.log('startNextGame: not training or paused');
       return;
     }
 
     try {
       this.currentGame++;
       this.currentGameExperiences = [];
+      console.log(`Starting training game ${this.currentGame}`);
 
       // Set player to AI control
       const player = this.game.getPlayer();
       if (player) {
         player.setControlMode('ai', this.policyAgent);
+        console.log('Player set to AI control with policy agent');
+      } else {
+        console.log('No player found!');
       }
 
       // Start the game
       this.game.restart();
       this.game.start();
-
-      console.log(`Starting training game ${this.currentGame}`);
+      console.log('Game restarted and started');
     } catch (error) {
       console.error('Failed to start next game:', error);
     }
@@ -361,7 +374,9 @@ export class TrainingSession {
    * @param {number} duration - Game duration in ms
    */
   async handleParallelGameComplete(result, gameId, duration) {
+    console.log('handleParallelGameComplete called: isTraining=', this.isTraining);
     if (!this.isTraining) {
+      console.log('handleParallelGameComplete: not isTraining. Skipping...');
       return;
     }
 
@@ -385,6 +400,8 @@ export class TrainingSession {
         isTie: result.winner === 'tie'
       });
 
+      // Add to experience buffer
+      this.addExperience(result.gameState, result.decision, rewardData.totalReward, false);
       // Train if needed
       if (this.gamesCompleted % this.options.trainingFrequency === 0) {
         await this.train();
@@ -407,6 +424,7 @@ export class TrainingSession {
 
       // Notify callbacks
       if (this.onGameEnd) {
+        console.log('handleParallelGameComplete: calling onGameEnd callback');
         this.onGameEnd(result.winner, this.gamesCompleted, this.trainingMetrics);
       }
 
@@ -423,6 +441,8 @@ export class TrainingSession {
    * @param {string} winner - Winner of the game
    */
   async handleGameEnd(winner) {
+    console.log(`handleGameEnd called: winner=${winner}, isTraining=${this.isTraining}`);
+    
     if (!this.isTraining) {
       // If not training, call the original callback to maintain normal game flow
       if (this.originalOnGameEnd) {
@@ -434,6 +454,7 @@ export class TrainingSession {
     try {
       this.gamesCompleted++;
       const gameLength = this.game.stepCount;
+      console.log(`Game ${this.gamesCompleted} ended: winner=${winner}, length=${gameLength} steps`);
 
       // Calculate reward
       const rewardData = this.rewardCalculator.calculateReward({
@@ -461,8 +482,8 @@ export class TrainingSession {
         isTie: winner === 'tie'
       });
 
-      // Store experiences in buffer
-      this.experienceBuffer.addBatch(this.currentGameExperiences);
+      // Experiences are added live to the buffer during gameplay
+      console.log('Experiences are added live to buffer; skipping batch add');
 
       // Train if needed
       if (this.gamesCompleted % this.options.trainingFrequency === 0) {
@@ -502,20 +523,34 @@ export class TrainingSession {
    * @param {boolean} isTerminal - Whether this is the final state
    */
   addExperience(state, action, reward, isTerminal = false) {
-    this.currentGameExperiences.push({
+    const experience = {
       state,
       action,
       reward,
       isTerminal,
       timestamp: Date.now()
-    });
+    };
+
+    // Keep local tracking for debugging/metrics
+    this.currentGameExperiences.push(experience);
+
+    // Add directly to the shared experience buffer
+    this.experienceBuffer.add(experience);
+    
+    // Debug logging
+    if (this.currentGameExperiences.length % 50 === 0) {
+      console.log(`Collected ${this.currentGameExperiences.length} experiences for current game`);
+    }
   }
 
   /**
    * Train the neural network
    */
   async train() {
+    console.log(`Training check: experienceBuffer size = ${this.experienceBuffer.getSize()}, currentGameExperiences = ${this.currentGameExperiences.length}`);
+    
     if (this.experienceBuffer.getSize() === 0) {
+      console.log('No experiences to train on');
       return;
     }
 

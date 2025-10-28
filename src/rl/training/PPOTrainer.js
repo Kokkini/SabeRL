@@ -5,6 +5,7 @@
 
 // TensorFlow.js is loaded from CDN as a global 'tf' object
 import { GameConfig } from '../../config/config.js';
+import { GameStateProcessor } from '../utils/GameStateProcessor.js';
 
 export class PPOTrainer {
   constructor(options = {}) {
@@ -22,6 +23,14 @@ export class PPOTrainer {
     // Optimizers
     this.policyOptimizer = tf.train.adam(this.options.learningRate);
     this.valueOptimizer = tf.train.adam(this.options.learningRate);
+    
+    // Game state processor for converting raw game states to feature arrays
+    this.stateProcessor = new GameStateProcessor({
+      normalizePositions: true,
+      normalizeAngles: true,
+      includeVelocity: true,
+      includeDistance: true
+    });
 
     // Training statistics
     this.trainingStats = {
@@ -44,12 +53,15 @@ export class PPOTrainer {
       return;
     }
 
+    console.log('experiences', experiences);
+
     try {
       console.log(`PPO Training with ${experiences.length} experiences`);
       
       // Prepare training data
       const trainingData = this.prepareTrainingData(experiences);
       
+      console.log('trainingData', trainingData);
       // Train for multiple epochs
       for (let epoch = 0; epoch < this.options.epochs; epoch++) {
         await this.trainEpoch(trainingData, policyModel, valueModel);
@@ -74,6 +86,8 @@ export class PPOTrainer {
     const values = [];
     const dones = [];
 
+    console.log(`PPO: Preparing training data from ${experiences.length} experiences`);
+
     for (const exp of experiences) {
       if (exp.state && exp.action !== undefined) {
         states.push(exp.state);
@@ -85,8 +99,87 @@ export class PPOTrainer {
       }
     }
 
+    console.log(`PPO: Processed ${states.length} valid experiences`);
+    console.log('PPO: Sample state:', states[0]);
+    console.log('PPO: Sample action:', actions[0]);
+
+    // Handle empty states array
+    if (states.length === 0) {
+      console.warn('PPO: No valid states found, returning empty tensors');
+      return {
+        states: tf.tensor2d([], [0, 9]), // Empty tensor with correct shape
+        actions: tf.tensor1d([], 'int32'),
+        rewards: tf.tensor1d([]),
+        oldLogProbs: tf.tensor1d([]),
+        values: tf.tensor1d([]),
+        dones: tf.tensor1d([])
+      };
+    }
+
+    // Ensure states is a 2D array
+    const statesArray = states.map(state => {
+      if (Array.isArray(state)) {
+        return state;
+      } else if (state && typeof state === 'object' && state.data) {
+        // If it's a TensorFlow tensor, convert to array
+        return Array.from(state.dataSync());
+      } else if (state && typeof state === 'object' && state.playerPosition) {
+        // If it's a raw game state object, process it
+        try {
+          // Create a safe copy of the state to avoid tensor disposal issues
+          let playerPos, opponentPos;
+          
+          try {
+            // Try to clone tensors if they exist and aren't disposed
+            if (state.playerPosition && !state.playerPosition.isDisposed) {
+              playerPos = state.playerPosition.clone();
+            } else {
+              // Fallback to default position
+              playerPos = tf.tensor2d([[8, 8]]);
+            }
+          } catch (e) {
+            playerPos = tf.tensor2d([[8, 8]]);
+          }
+          
+          try {
+            if (state.opponentPosition && !state.opponentPosition.isDisposed) {
+              opponentPos = state.opponentPosition.clone();
+            } else {
+              opponentPos = tf.tensor2d([[12, 12]]);
+            }
+          } catch (e) {
+            opponentPos = tf.tensor2d([[12, 12]]);
+          }
+          
+          const stateCopy = {
+            playerPosition: playerPos,
+            opponentPosition: opponentPos,
+            playerSaberAngle: state.playerSaberAngle || 0,
+            playerSaberAngularVelocity: state.playerSaberAngularVelocity || 0,
+            opponentSaberAngle: state.opponentSaberAngle || 0,
+            opponentSaberAngularVelocity: state.opponentSaberAngularVelocity || 0,
+            timestamp: state.timestamp || Date.now()
+          };
+          
+          const result = this.stateProcessor.processState(stateCopy);
+          
+          // Clean up cloned tensors
+          playerPos.dispose();
+          opponentPos.dispose();
+          
+          return result;
+        } catch (error) {
+          console.warn('PPO: Error processing game state:', error);
+          return new Array(9).fill(0); // Default state
+        }
+      } else {
+        console.warn('PPO: Unexpected state format:', state);
+        return new Array(9).fill(0); // Default state
+      }
+    });
+
     return {
-      states: tf.tensor2d(states),
+      states: tf.tensor2d(statesArray, [statesArray.length, statesArray[0]?.length || 9]),
       actions: tf.tensor1d(actions, 'int32'),
       rewards: tf.tensor1d(rewards),
       oldLogProbs: tf.tensor1d(oldLogProbs),
@@ -130,50 +223,85 @@ export class PPOTrainer {
    */
   async trainBatch(batch, policyModel, valueModel) {
     return tf.tidy(() => {
-      // Compute advantages and returns
-      const { advantages, returns } = this.computeAdvantages(batch);
+      // Compute value predictions for GAE (bootstrap with 0 at terminal)
+      const valuesPred = valueModel
+        ? valueModel.predict(batch.states).squeeze()
+        : tf.zerosLike(batch.rewards);
+      // Compute advantages and returns using predicted values
+      const { advantages, returns } = this.computeAdvantages(batch, valuesPred);
 
-      // Get current policy predictions
+      // Normalize advantages per batch for stability
+      const advMean = advantages.mean();
+      const advStd = advantages.sub(advMean).square().mean().sqrt();
+      const normAdvantages = advantages.sub(advMean).div(advStd.add(1e-8));
+
+      console.log("batch.states", batch.states);
+      // Get current policy predictions. batch.states is a tensor with shape [batchSize, 9]
       const policyOutput = policyModel.predict(batch.states);
-      const actionProbs = tf.softmax(policyOutput);
-      const logProbs = tf.log(actionProbs + 1e-8);
+      
+      // Ensure policy output is float32
+      const policyOutputFloat = policyOutput.cast('float32');
+      const actionProbs = tf.softmax(policyOutputFloat);
+      const logProbs = tf.log(actionProbs.add(1e-8));
 
-      // Compute policy loss (PPO clipped objective)
-      const policyLoss = this.computePolicyLoss(
-        logProbs,
-        batch.oldLogProbs,
-        batch.actions,
-        advantages
-      );
+      // Update policy model using minimize
+      this.policyOptimizer.minimize(() => {
+        // Recompute policy predictions inside gradient function
+        const policyOutput = policyModel.predict(batch.states);
+        const policyOutputFloat = policyOutput.cast('float32');
+        const actionProbs = tf.softmax(policyOutputFloat);
+        const logProbs = tf.log(actionProbs.add(1e-8));
 
-      // Compute value loss if value model provided
+        // Compute policy loss (PPO clipped objective)
+        const policyLoss = this.computePolicyLoss(
+          logProbs,
+          batch.oldLogProbs,
+          batch.actions,
+          normAdvantages
+        );
+
+        // Compute entropy bonus
+        const entropy = this.computeEntropy(actionProbs);
+
+        // Total loss (only policy loss for policy model)
+        return policyLoss.sub(entropy.mul(this.options.entropyCoeff));
+      });
+
+      // Train value model if provided
       let valueLoss = tf.scalar(0);
       if (valueModel) {
+        this.valueOptimizer.minimize(() => {
+          const valueOutput = valueModel.predict(batch.states);
+          const valueOutputSqueezed = valueOutput.squeeze();
+          const returnsSqueezed = returns.squeeze();
+          return this.computeValueLoss(valueOutputSqueezed, returnsSqueezed)
+            .mul(this.options.valueLossCoeff);
+        });
+        
+        // Get value loss for statistics
         const valueOutput = valueModel.predict(batch.states);
-        valueLoss = this.computeValueLoss(valueOutput, returns);
+        const valueOutputSqueezed = valueOutput.squeeze();
+        const returnsSqueezed = returns.squeeze();
+        valueLoss = this.computeValueLoss(valueOutputSqueezed, returnsSqueezed)
+          .mul(this.options.valueLossCoeff);
       }
 
-      // Compute entropy bonus
-      const entropy = this.computeEntropy(actionProbs);
-
-      // Total loss
-      const totalLoss = policyLoss.add(valueLoss.mul(this.options.valueLossCoeff))
-                                .sub(entropy.mul(this.options.entropyCoeff));
-
-      // Compute gradients and update
-      const policyGradients = this.policyOptimizer.computeGradients(
-        () => totalLoss,
-        policyModel.trainableVariables
+      // Update statistics (compute values for stats)
+      const finalPolicyOutput = policyModel.predict(batch.states);
+      const finalPolicyOutputFloat = finalPolicyOutput.cast('float32');
+      const finalActionProbs = tf.softmax(finalPolicyOutputFloat);
+      const finalLogProbs = tf.log(finalActionProbs.add(1e-8));
+      const finalEntropy = this.computeEntropy(finalActionProbs);
+      
+      // Compute policy loss for statistics
+      const finalPolicyLoss = this.computePolicyLoss(
+        finalLogProbs,
+        batch.oldLogProbs,
+        batch.actions,
+        normAdvantages
       );
-
-      // Clip gradients
-      const clippedGradients = this.clipGradients(policyGradients);
-
-      // Apply gradients
-      this.policyOptimizer.applyGradients(clippedGradients);
-
-      // Update statistics
-      this.updateStats(policyLoss, valueLoss, entropy, advantages, logProbs, batch.oldLogProbs);
+      
+      this.updateStats(finalPolicyLoss, valueLoss, finalEntropy, normAdvantages, finalLogProbs, batch.oldLogProbs, batch.actions);
     });
   }
 
@@ -182,23 +310,25 @@ export class PPOTrainer {
    * @param {Object} batch - Batch data
    * @returns {Object} Advantages and returns
    */
-  computeAdvantages(batch) {
+  computeAdvantages(batch, valuesTensor) {
     const gamma = GameConfig.rl.discountFactor;
     const lambda = 0.95; // GAE parameter
 
     const rewards = batch.rewards.dataSync();
-    const values = batch.values.dataSync();
     const dones = batch.dones.dataSync();
+    const valuesArr = valuesTensor.dataSync();
 
     const advantages = [];
     const returns = [];
 
     let advantage = 0;
     for (let t = rewards.length - 1; t >= 0; t--) {
-      const delta = rewards[t] + gamma * values[t + 1] * (1 - dones[t]) - values[t];
+      const v = valuesArr[t] || 0;
+      const nextV = (t === rewards.length - 1 || dones[t]) ? 0 : (valuesArr[t + 1] || 0);
+      const delta = rewards[t] + gamma * nextV - v;
       advantage = delta + gamma * lambda * (1 - dones[t]) * advantage;
       advantages.unshift(advantage);
-      returns.unshift(advantage + values[t]);
+      returns.unshift(advantage + v);
     }
 
     return {
@@ -217,8 +347,13 @@ export class PPOTrainer {
    */
   computePolicyLoss(logProbs, oldLogProbs, actions, advantages) {
     // Get log probability of taken actions
-    const actionLogProbs = tf.gather(logProbs, actions, 1).squeeze();
-    const oldActionLogProbs = oldLogProbs;
+    // logProbs shape: [batchSize, 4], actions shape: [batchSize]
+    // Use oneHot to create mask and mul to select action log probabilities
+    const actionMask = tf.oneHot(actions.cast('int32'), 4);
+    const actionLogProbs = tf.sum(logProbs.mul(actionMask), 1);
+    
+    // Ensure oldLogProbs has the same shape as actionLogProbs
+    const oldActionLogProbs = oldLogProbs.squeeze();
 
     // Compute probability ratio
     const ratio = tf.exp(actionLogProbs.sub(oldActionLogProbs));
@@ -254,8 +389,10 @@ export class PPOTrainer {
    * @returns {tf.Tensor} Entropy
    */
   computeEntropy(probs) {
-    const logProbs = tf.log(probs + 1e-8);
-    return probs.mul(logProbs).sum(1).mean();
+    // Ensure probs is float32
+    const probsFloat = probs.cast('float32');
+    const logProbs = tf.log(probsFloat.add(1e-8));
+    return probsFloat.mul(logProbs).sum(1).neg().mean();
   }
 
   /**
@@ -281,17 +418,20 @@ export class PPOTrainer {
    * @param {tf.Tensor} logProbs - Log probabilities
    * @param {tf.Tensor} oldLogProbs - Old log probabilities
    */
-  updateStats(policyLoss, valueLoss, entropy, advantages, logProbs, oldLogProbs) {
+  updateStats(policyLoss, valueLoss, entropy, advantages, logProbs, oldLogProbs, actions) {
     this.trainingStats.policyLoss = policyLoss.dataSync()[0];
     this.trainingStats.valueLoss = valueLoss.dataSync()[0];
     this.trainingStats.entropy = entropy.dataSync()[0];
     
-    // Compute KL divergence
-    const klDiv = logProbs.sub(oldLogProbs).mean();
+    // Compute KL divergence using per-action log-probs
+    const actionMask = tf.oneHot(actions.cast('int32'), 4);
+    const curActionLogProbs = tf.sum(logProbs.mul(actionMask), 1);
+    const oldActionLogProbs = oldLogProbs.squeeze();
+    const klDiv = curActionLogProbs.sub(oldActionLogProbs).mean();
     this.trainingStats.klDivergence = klDiv.dataSync()[0];
     
-    // Compute clip fraction
-    const ratio = tf.exp(logProbs.sub(oldLogProbs));
+    // Compute clip fraction using per-action ratios
+    const ratio = tf.exp(curActionLogProbs.sub(oldActionLogProbs));
     const clipped = tf.clipByValue(ratio, 1 - this.options.clipRatio, 1 + this.options.clipRatio);
     const clipFraction = tf.notEqual(ratio, clipped).cast('float32').mean();
     this.trainingStats.clipFraction = clipFraction.dataSync()[0];

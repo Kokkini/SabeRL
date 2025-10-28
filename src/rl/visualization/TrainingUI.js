@@ -920,8 +920,6 @@ export class TrainingUI {
    * @param {Object} metrics - Training metrics
    */
   updateChart(metrics) {
-    console.log(`updateChart called: gamesCompleted=${metrics.gamesCompleted}, isTraining=${this.trainingSession?.isTraining}, gamesCompleted % 100=${metrics.gamesCompleted % 100}`);
-    
     // Only update chart if training is active and every 100 games
     if (!this.trainingSession || !this.trainingSession.isTraining || metrics.gamesCompleted % 100 !== 0) {
       return;

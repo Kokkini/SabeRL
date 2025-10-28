@@ -119,7 +119,7 @@ export function applyDefaults(config) {
         win: 1.0,
         loss: -1.0,
         timePenalty: -0.01,
-        maxGameLength: 600
+        maxGameLength: 60
       }
     }
   };
@@ -245,7 +245,7 @@ export const GameConfig = {
     batchSize: 32,
     rewardScaling: 1.0,
     discountFactor: 0.99,
-    trainingFrequency: 1, // Train every N games
+    trainingFrequency: 10, // Train every N games
     
     // Game settings
     decisionInterval: 4, // frames between AI decisions

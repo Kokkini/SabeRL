@@ -49,10 +49,10 @@ export class NeuralNetwork {
         }));
       }
       
-      // Add output layer (softmax for action probabilities)
+      // Add output layer (linear logits; softmax applied in trainers/predict)
       this.model.add(tf.layers.dense({
         units: this.architecture.outputSize,
-        activation: 'softmax',
+        activation: 'linear',
         name: 'output_layer'
       }));
       
@@ -91,9 +91,10 @@ export class NeuralNetwork {
         throw new Error('Invalid game state format');
       }
       
-      // Get predictions
+      // Get logits and convert to probabilities via softmax
       const predictions = this.model.predict(input);
-      const probabilities = predictions.dataSync();
+      const probsTensor = tf.softmax(predictions);
+      const probabilities = probsTensor.dataSync();
       
       // Find best action
       const actionIndex = this.getActionIndex(probabilities);
@@ -103,6 +104,7 @@ export class NeuralNetwork {
       // Clean up tensors
       input.dispose();
       predictions.dispose();
+      probsTensor.dispose();
       
       return {
         action,

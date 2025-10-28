@@ -21,6 +21,9 @@ export class PolicyAgent {
     this.isActive = false;
     this.explorationRate = config.explorationRate || GameConfig.rl.explorationRate;
     
+    // Experience collection callback
+    this.onExperience = config.onExperience || null;
+    
     // Perception and action systems
     this.stateProcessor = new GameStateProcessor({
       normalizePositions: true,
@@ -102,6 +105,25 @@ export class PolicyAgent {
         method: 'neural_network',
         timestamp: Date.now()
       };
+      
+      // Collect experience if callback is provided
+      if (this.onExperience) {
+        // Compute per-action log-prob from probabilities
+        const probs = tf.tensor1d(prediction.probabilities, 'float32');
+        const logProbs = tf.log(probs.add(1e-8));
+        const actionIdx = actionDecision.actionIndex;
+        const logProbValue = logProbs.gather(actionIdx).dataSync()[0];
+        probs.dispose();
+        logProbs.dispose();
+        
+        this.onExperience({
+          state: processedState,
+          action: actionDecision.actionIndex,
+          reward: 0, // Will be updated later with actual reward
+          isTerminal: false,
+          logProb: logProbValue
+        });
+      }
       
       // Create movement decision
       return new MovementDecision({
