@@ -5,12 +5,14 @@
 
 export class RewardCalculator {
   constructor(config = {}) {
-    this.winReward = config.winReward || 1.0;
-    this.lossReward = config.lossReward || -1.0;
-    this.tieReward = config.tieReward || 0.0;
-    this.timePenalty = config.timePenalty || -0.01; // Per second penalty
+    console.log('config: ', config);
+    this.winReward = config.winReward ?? 1.0;
+    this.lossReward = config.lossReward ?? -1.0;
+    this.tieReward = config.tieReward ?? 0.0;
+    this.timePenalty = config.timePenalty ?? -0.01; // Per second penalty
     this.maxGameLength = config.maxGameLength || 60; // Max game length in seconds
     this.timePenaltyThreshold = config.timePenaltyThreshold || 10; // Start penalty after N seconds
+    console.log('timePenalty: ', this.timePenalty);
     
     this.validate();
   }

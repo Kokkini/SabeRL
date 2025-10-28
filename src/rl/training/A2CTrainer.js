@@ -14,7 +14,7 @@ export class A2CTrainer {
       valueLossCoeff: options.valueLossCoeff || 0.5,
       entropyCoeff: options.entropyCoeff || 0.01,
       maxGradNorm: options.maxGradNorm || 0.5,
-      batchSize: options.batchSize || GameConfig.rl.batchSize,
+      miniBatchSize: options.miniBatchSize || GameConfig.rl.miniBatchSize,
       ...options
     };
 
@@ -56,8 +56,27 @@ export class A2CTrainer {
       // Prepare training data
       const trainingData = this.prepareTrainingData(experiences);
       
-      // Train on the batch
-      await this.trainBatch(trainingData, policyModel, valueModel);
+      // Split into mini-batches and train
+      const miniBatchSize = this.options.miniBatchSize;
+      const totalSamples = trainingData.states.shape[0];
+      const numMiniBatches = Math.ceil(totalSamples / miniBatchSize);
+      
+      console.log(`A2C: ${totalSamples} samples, ${numMiniBatches} mini-batches of size ${miniBatchSize}`);
+      
+      for (let i = 0; i < numMiniBatches; i++) {
+        const start = i * miniBatchSize;
+        const end = Math.min(start + miniBatchSize, totalSamples);
+        
+        const batch = {
+          states: trainingData.states.slice([start, 0], [end - start, -1]),
+          actions: trainingData.actions.slice([start], [end - start]),
+          rewards: trainingData.rewards.slice([start], [end - start]),
+          values: trainingData.values.slice([start], [end - start]),
+          dones: trainingData.dones.slice([start], [end - start])
+        };
+        
+        await this.trainBatch(batch, policyModel, valueModel);
+      }
 
       console.log('A2C Training completed');
     } catch (error) {

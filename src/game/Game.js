@@ -203,7 +203,6 @@ export class Game {
     this.resetGameEntities();
     
     console.log('Game started');
-    console.log('Model: ', this.players[0].getPolicyAgent().neuralNetwork.model);
   }
 
   /**

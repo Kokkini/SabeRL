@@ -35,13 +35,24 @@ export class TrainingSession {
     // AI and training components
     this.policyAgent = null;
     this.trainingMetrics = new TrainingMetrics();
-    this.rewardCalculator = new RewardCalculator();
+    // Initialize RewardCalculator with config from GameConfig.rl.rewards
+    const rc = GameConfig.rl.rewards || {};
+    const rewardConfig = {
+      winReward: rc.win,
+      lossReward: rc.loss,
+      tieReward: rc.tie ?? 0,
+      timePenalty: rc.timePenalty,
+      maxGameLength: rc.maxGameLength,
+      timePenaltyThreshold: rc.timePenaltyThreshold ?? 0
+    };
+    console.log('[TrainingSession] Initializing RewardCalculator with config:', rewardConfig);
+    this.rewardCalculator = new RewardCalculator(rewardConfig);
     this.modelManager = new ModelManager();
 
     // Experience storage
     this.experienceBuffer = new ExperienceBuffer({
       maxSize: 10000,
-      batchSize: 32 // Use a proper batch size for training
+      batchSize: GameConfig.rl.batchSize // Use config batch size for sampling
     });
 
     // Track last game result for UI
@@ -127,12 +138,12 @@ export class TrainingSession {
     if (this.algorithm === 'PPO') {
       this.trainer = new PPOTrainer({
         learningRate: GameConfig.rl.learningRate,
-        batchSize: GameConfig.rl.batchSize
+        miniBatchSize: GameConfig.rl.miniBatchSize
       });
     } else if (this.algorithm === 'A2C') {
       this.trainer = new A2CTrainer({
         learningRate: GameConfig.rl.learningRate,
-        batchSize: GameConfig.rl.batchSize
+        miniBatchSize: GameConfig.rl.miniBatchSize
       });
     } else {
       throw new Error(`Unsupported training algorithm: ${this.algorithm}`);
@@ -310,16 +321,16 @@ export class TrainingSession {
       headlessGame.start();
       
       // Run game loop (fast forward without rendering)
-      const targetFPS = 10;
+      const targetFPS = GameConfig.rl.headless?.targetFPS || 10;
       const deltaTime = 1 / targetFPS; // Fixed time step
       const maxSteps = GameConfig.rl.rewards.maxGameLength * targetFPS;
-      
-      
+      const yieldEverySteps = GameConfig.rl.headless?.yieldEverySteps ?? 0;
+
       for (let step = 0; step < maxSteps && !gameEnded; step++) {
         headlessGame.update(deltaTime);
         
-        // Yield control periodically to avoid blocking
-        if (step % 100 === 0) {
+        // Yield control periodically to avoid blocking (configurable)
+        if (yieldEverySteps > 0 && step % yieldEverySteps === 0) {
           await new Promise(resolve => setTimeout(resolve, 0));
         }
       }
@@ -391,18 +402,29 @@ export class TrainingSession {
 
       // Calculate reward
       const rewardData = this.rewardCalculator.calculateReward({
-        won: result.winner === 'player',
-        lost: result.winner === 'ai',
+        won: result.winner && result.winner.id === 'player-1',
+        lost: result.winner && result.winner.id === 'ai-1',
         isTie: result.winner === 'tie',
         gameLength: result.gameLength
       });
       
       // Update metrics
       this.trainingMetrics.updateGameResult({
-        won: result.winner === 'player',
+        won: result.winner && result.winner.id === 'player-1',
         gameLength: result.gameLength,
         reward: rewardData.totalReward,
         isTie: result.winner === 'tie'
+      });
+      console.log('[TrainingSession] parallel game metrics:', {
+        winner: result.winner,
+        won: result.winner && result.winner.id === 'player-1',
+        isTie: result.winner === 'tie',
+        gameLength: result.gameLength,
+        reward: rewardData.totalReward,
+        gamesCompleted: this.trainingMetrics.gamesCompleted,
+        wins: this.trainingMetrics.wins,
+        winRateRaw: this.trainingMetrics.winRate,
+        winRatePercent: this.trainingMetrics.winRate * 100
       });
 
       // Add to experience buffer
@@ -463,15 +485,15 @@ export class TrainingSession {
 
       // Calculate reward
       const rewardData = this.rewardCalculator.calculateReward({
-        won: winner === 'player',
-        lost: winner === 'ai',
+        won: winner && winner.id === 'player-1',
+        lost: winner && winner.id === 'ai-1',
         isTie: winner === 'tie',
         gameLength: gameLength
       });
       
       // Store last game result for UI
       this.lastGameResult = {
-        won: winner === 'player',
+        won: winner && winner.id === 'player-1',
         gameLength: gameLength,
         reward: rewardData.totalReward
       };
@@ -481,10 +503,21 @@ export class TrainingSession {
 
       // Update metrics
       this.trainingMetrics.updateGameResult({
-        won: winner === 'player',
+        won: winner && winner.id === 'player-1',
         gameLength: gameLength,
         reward: rewardData.totalReward,
         isTie: winner === 'tie'
+      });
+      console.log('[TrainingSession] main game metrics:', {
+        winner,
+        won: winner && winner.id === 'player-1',
+        isTie: winner === 'tie',
+        gameLength,
+        reward: rewardData.totalReward,
+        gamesCompleted: this.trainingMetrics.gamesCompleted,
+        wins: this.trainingMetrics.wins,
+        winRateRaw: this.trainingMetrics.winRate,
+        winRatePercent: this.trainingMetrics.winRate * 100
       });
 
       // Experiences are added live to the buffer during gameplay

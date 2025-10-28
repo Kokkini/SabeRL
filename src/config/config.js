@@ -237,12 +237,13 @@ export const GameConfig = {
   // RL Training settings
   rl: {
     // Neural network architecture
-    hiddenLayers: [128, 64, 32],
+    hiddenLayers: [64, 32, 16],
     
     // Training parameters
     learningRate: 0.001,
     explorationRate: 0.3, // Higher exploration for untrained network
-    batchSize: 32,
+    batchSize: 300, // Total batch size for training
+    miniBatchSize: 30, // Mini-batch size for gradient updates
     rewardScaling: 1.0,
     discountFactor: 0.99,
     trainingFrequency: 10, // Train every N games
@@ -259,12 +260,25 @@ export const GameConfig = {
     autoSaveInterval: 50, // Auto-save every N games
     performanceMonitoring: true,
     
+    // UI settings
+    chartUpdateFrequency: 5, // Update chart every N games
+    chartMaxDataPoints: 100,    // Keep only last N data points on charts
+    
     // Reward structure
     rewards: {
       win: 1.0,
       loss: -1.0,
-      timePenalty: -0.01, // Per second penalty
+      // timePenalty: -0.01, // Per second penalty
+      timePenalty: 0.0,
       maxGameLength: 60   // Max game length in seconds
+    },
+
+    // Headless simulation tuning
+    headless: {
+      // Logical steps per second for headless sims. Higher = faster simulation.
+      targetFPS: 10,
+      // Yield to event loop every N steps to keep UI responsive. 0 disables yielding.
+      yieldEverySteps: 0
     }
   }
 };

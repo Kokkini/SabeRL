@@ -16,7 +16,7 @@ export class PPOTrainer {
       entropyCoeff: options.entropyCoeff || 0.01,
       maxGradNorm: options.maxGradNorm || 0.5,
       epochs: options.epochs || 4,
-      batchSize: options.batchSize || GameConfig.rl.batchSize,
+      miniBatchSize: options.miniBatchSize || GameConfig.rl.miniBatchSize,
       ...options
     };
 
@@ -195,12 +195,15 @@ export class PPOTrainer {
    * @param {Object} valueModel - Value model
    */
   async trainEpoch(data, policyModel, valueModel) {
-    const batchSize = this.options.batchSize;
-    const numBatches = Math.ceil(data.states.shape[0] / batchSize);
+    const miniBatchSize = this.options.miniBatchSize;
+    const totalSamples = data.states.shape[0];
+    const numMiniBatches = Math.ceil(totalSamples / miniBatchSize);
+    
+    console.log(`PPO Epoch: ${totalSamples} samples, ${numMiniBatches} mini-batches of size ${miniBatchSize}`);
 
-    for (let i = 0; i < numBatches; i++) {
-      const start = i * batchSize;
-      const end = Math.min(start + batchSize, data.states.shape[0]);
+    for (let i = 0; i < numMiniBatches; i++) {
+      const start = i * miniBatchSize;
+      const end = Math.min(start + miniBatchSize, totalSamples);
 
       const batch = {
         states: data.states.slice([start, 0], [end - start, -1]),

@@ -724,16 +724,8 @@ export class TrainingUI {
     this.updateButtonStates('paused');
     this.updateStatus('Paused');
     
-    // Hide all charts when training is paused
-    if (this.chartContainerDiv) {
-      this.chartContainerDiv.style.display = 'none';
-    }
-    if (this.gameLengthChartContainerDiv) {
-      this.gameLengthChartContainerDiv.style.display = 'none';
-    }
-    if (this.winRateChartContainerDiv) {
-      this.winRateChartContainerDiv.style.display = 'none';
-    }
+    // Keep charts visible when training is paused
+    // Charts remain displayed to show training progress
   }
 
   /**
@@ -748,16 +740,8 @@ export class TrainingUI {
     this.updateButtonStates('stopped');
     this.updateStatus('Stopped');
     
-    // Hide all charts when training stops
-    if (this.chartContainerDiv) {
-      this.chartContainerDiv.style.display = 'none';
-    }
-    if (this.gameLengthChartContainerDiv) {
-      this.gameLengthChartContainerDiv.style.display = 'none';
-    }
-    if (this.winRateChartContainerDiv) {
-      this.winRateChartContainerDiv.style.display = 'none';
-    }
+    // Keep charts visible when training stops
+    // Charts remain displayed to show final training results
 
     // Return player to human control when training stops
     if (this.trainingSession.game) {
@@ -839,6 +823,11 @@ export class TrainingUI {
     
     // Only update chart if we have valid training data
     if (metrics && metrics.gamesCompleted > 0) {
+      console.log('[TrainingUI] updateTrainingProgress:', {
+        gamesCompleted: metrics.gamesCompleted,
+        winRateRaw: metrics.winRate,
+        winRatePercent: metrics.winRate * 100
+      });
       this.updateChart(metrics);
     }
   }
@@ -916,12 +905,13 @@ export class TrainingUI {
   }
 
   /**
-   * Update reward chart (throttled to every 100 games with batch statistics)
+   * Update reward chart (throttled to configurable frequency with batch statistics)
    * @param {Object} metrics - Training metrics
    */
   updateChart(metrics) {
-    // Only update chart if training is active and every 100 games
-    if (!this.trainingSession || !this.trainingSession.isTraining || metrics.gamesCompleted % 100 !== 0) {
+    const updateFrequency = GameConfig.rl.chartUpdateFrequency;
+    // Only update chart if training is active and at configured frequency
+    if (!this.trainingSession || !this.trainingSession.isTraining || metrics.gamesCompleted % updateFrequency !== 0) {
       return;
     }
 
@@ -945,20 +935,21 @@ export class TrainingUI {
       return;
     }
 
-    // Calculate batch statistics for the last 100 games
-    const batchStats = this.calculateBatchStatistics(metrics);
+    // Calculate batch statistics for the last N games (where N = updateFrequency)
+    const batchStats = this.calculateBatchStatistics(metrics, updateFrequency);
     
     console.log(`Updating chart with batch at game ${metrics.gamesCompleted}: avg=${batchStats.avg}, min=${batchStats.min}, max=${batchStats.max}`);
 
-    // Add new data point (every 100 games)
-    const batchNumber = Math.floor(metrics.gamesCompleted / 100);
+    // Add new data point (every updateFrequency games)
+    const batchNumber = Math.floor(metrics.gamesCompleted / updateFrequency);
     this.chart.data.labels.push(`Batch ${batchNumber}`);
     this.chart.data.datasets[0].data.push(batchStats.avg);
     this.chart.data.datasets[1].data.push(batchStats.min);
     this.chart.data.datasets[2].data.push(batchStats.max);
 
-    // Keep only last 20 data points (20 batches = 2000 games)
-    if (this.chart.data.labels.length > 20) {
+    // Keep only last N data points (N batches = N * updateFrequency games)
+    const maxPoints = GameConfig.rl.chartMaxDataPoints;
+    if (this.chart.data.labels.length > maxPoints) {
       this.chart.data.labels.shift();
       this.chart.data.datasets.forEach(dataset => {
         dataset.data.shift();
@@ -985,8 +976,9 @@ export class TrainingUI {
     this.gameLengthChart.data.labels.push(`Batch ${batchNumber}`);
     this.gameLengthChart.data.datasets[0].data.push(batchStats.avgGameLength);
     
-    // Keep only last 20 data points
-    if (this.gameLengthChart.data.labels.length > 20) {
+    // Keep only last N data points
+    const maxPointsGL = GameConfig.rl.chartMaxDataPoints;
+    if (this.gameLengthChart.data.labels.length > maxPointsGL) {
       this.gameLengthChart.data.labels.shift();
       this.gameLengthChart.data.datasets[0].data.shift();
     }
@@ -1003,11 +995,18 @@ export class TrainingUI {
     if (!this.winRateChart) return;
     
     // Add new data point
+    console.log('[TrainingUI] updateWinRateChart add point:', {
+      batchNumber,
+      winRatePercent: batchStats.winRate,
+      gamesCompleted: this.trainingSession?.gamesCompleted,
+      rawWinRate: this.trainingSession?.trainingMetrics?.winRate
+    });
     this.winRateChart.data.labels.push(`Batch ${batchNumber}`);
     this.winRateChart.data.datasets[0].data.push(batchStats.winRate);
     
-    // Keep only last 20 data points
-    if (this.winRateChart.data.labels.length > 20) {
+    // Keep only last N data points
+    const maxPointsWR = GameConfig.rl.chartMaxDataPoints;
+    if (this.winRateChart.data.labels.length > maxPointsWR) {
       this.winRateChart.data.labels.shift();
       this.winRateChart.data.datasets[0].data.shift();
     }
@@ -1029,11 +1028,12 @@ export class TrainingUI {
   }
 
   /**
-   * Calculate batch statistics for the last 100 games
+   * Calculate batch statistics for the last N games
    * @param {Object} metrics - Training metrics
+   * @param {number} updateFrequency - Number of games per batch
    * @returns {Object} Batch statistics
    */
-  calculateBatchStatistics(metrics) {
+  calculateBatchStatistics(metrics, updateFrequency = 100) {
     console.log('Calculating batch statistics from metrics:', metrics);
     
     // Use metrics directly for now
