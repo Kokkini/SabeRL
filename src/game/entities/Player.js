@@ -94,7 +94,7 @@ export class Player {
     if (!this.policyAgent || !gameState) return;
 
     // Make AI decision
-    const decision = this.policyAgent.makeDecision(gameState);
+    const decision = this.policyAgent.makeDecision(gameState, deltaTime);
     this.currentDecision = decision;
     
     // Convert decision to input state
@@ -384,13 +384,15 @@ export class Player {
    * Set control mode
    * @param {string} mode - Control mode ('human' or 'ai')
    * @param {PolicyAgent} policyAgent - Policy agent for AI mode
+   * @param {boolean} isSharedAgent - Whether this is a shared agent (don't dispose)
    */
-  setControlMode(mode, policyAgent = null) {
+  setControlMode(mode, policyAgent = null, isSharedAgent = false) {
     if (mode !== 'human' && mode !== 'ai') {
       throw new Error(`Invalid control mode: ${mode}. Must be 'human' or 'ai'`);
     }
     
     this.controlMode = mode;
+    this.isSharedAgent = isSharedAgent;
     
     if (mode === 'ai') {
       if (!policyAgent) {
@@ -474,7 +476,8 @@ export class Player {
     this.position.dispose();
     this.velocity.dispose();
     
-    if (this.policyAgent) {
+    // Only dispose of policy agent if it's not shared
+    if (this.policyAgent && !this.isSharedAgent) {
       this.policyAgent.dispose();
     }
   }

@@ -12,6 +12,7 @@ import { ModelManager } from '../utils/ModelManager.js';
 import { PPOTrainer } from './PPOTrainer.js';
 import { A2CTrainer } from './A2CTrainer.js';
 import { ExperienceBuffer } from './ExperienceBuffer.js';
+import { Game } from '../../game/Game.js';
 
 export class TrainingSession {
   constructor(game, options = {}) {
@@ -45,7 +46,6 @@ export class TrainingSession {
 
     // Track last game result for UI
     this.lastGameResult = null;
-    this.currentGameExperiences = [];
 
     // Callbacks
     this.onGameEnd = null;
@@ -270,7 +270,7 @@ export class TrainingSession {
   }
 
   /**
-   * Run a single parallel game
+   * Run a single parallel game (headless, no rendering)
    */
   async runParallelGame() {
     if (!this.isTraining || this.isPaused) {
@@ -281,58 +281,64 @@ export class TrainingSession {
     const startTime = Date.now();
     
     try {
-      // Create a simplified game state for parallel training
-      const gameResult = await this.simulateGame();
+      // Create a headless game instance (no canvas/context)
+      const headlessGame = new Game();
+      await headlessGame.init();
       
-      // Handle the result
-      this.handleParallelGameComplete(gameResult, gameId, Date.now() - startTime);
+      // Use the shared policy agent (no need to clone - agent is stateless)
+      // Each game's Player maintains its own decision state
+      const player = headlessGame.getPlayer();
+      if (player) {
+        player.setControlMode('ai', this.policyAgent, true); // true = isSharedAgent
+      }
+      
+      // Set game end callback
+      let gameEnded = false;
+      headlessGame.onGameEnd = (winner, steps) => {
+        gameEnded = true;
+        const gameResult = {
+          winner,
+          gameLength: steps
+        };
+        this.handleParallelGameComplete(gameResult, gameId, Date.now() - startTime);
+        
+        // Clean up (no agent to dispose, just the game)
+        headlessGame.dispose();
+      };
+      
+      // Start the game
+      headlessGame.start();
+      
+      // Run game loop (fast forward without rendering)
+      const targetFPS = 10;
+      const deltaTime = 1 / targetFPS; // Fixed time step
+      const maxSteps = GameConfig.rl.rewards.maxGameLength * targetFPS;
+      
+      
+      for (let step = 0; step < maxSteps && !gameEnded; step++) {
+        headlessGame.update(deltaTime);
+        
+        // Yield control periodically to avoid blocking
+        if (step % 100 === 0) {
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+      }
+      
+      // If game didn't end naturally, manually trigger end callback
+      if (!gameEnded) {
+        const gameResult = {
+          winner: 'tie',
+          gameLength: headlessGame.stepCount
+        };
+        this.handleParallelGameComplete(gameResult, gameId, Date.now() - startTime);
+        
+        // Clean up (no agent to dispose, just the game)
+        headlessGame.dispose();
+      }
       
     } catch (error) {
       console.error(`Parallel game ${gameId} failed:`, error);
     }
-  }
-
-  /**
-   * Simulate a game for parallel training
-   */
-  async simulateGame() {
-    // Create a simplified game simulation
-    const maxGameTime = GameConfig.rl.rewards.maxGameLength * 1000; // Convert to ms
-    const startTime = Date.now();
-    
-    // Simulate game duration (random between 1-10 seconds)
-    const gameDuration = Math.random() * 9000 + 1000; // 1-10 seconds
-    const actualDuration = Math.min(gameDuration, maxGameTime);
-    
-    // Simulate AI decision making
-    const gameState = this.createSimulatedGameState();
-    const decision = this.policyAgent.makeDecision(gameState);
-    
-    // Simulate win/loss (random for now, but could be based on decision quality)
-    const winner = Math.random() < 0.3 ? 'player' : 'ai'; // 30% win rate initially
-    
-    return {
-      winner,
-      gameLength: actualDuration / 1000,
-      decision,
-      gameState
-    };
-  }
-
-  /**
-   * Create a simulated game state for parallel training
-   */
-  createSimulatedGameState() {
-    // Create a simplified game state for AI decision making
-    return {
-      playerPosition: tf.tensor2d([[Math.random() * 16, Math.random() * 16]]),
-      opponentPosition: tf.tensor2d([[Math.random() * 16, Math.random() * 16]]),
-      playerSaberAngle: Math.random() * 2 * Math.PI,
-      playerSaberAngularVelocity: GameConfig.arena.saberRotationSpeed,
-      opponentSaberAngle: Math.random() * 2 * Math.PI,
-      opponentSaberAngularVelocity: GameConfig.arena.saberRotationSpeed,
-      timestamp: Date.now()
-    };
   }
 
   /**
@@ -346,7 +352,6 @@ export class TrainingSession {
 
     try {
       this.currentGame++;
-      this.currentGameExperiences = [];
       console.log(`Starting training game ${this.currentGame}`);
 
       // Set player to AI control
@@ -374,7 +379,7 @@ export class TrainingSession {
    * @param {number} duration - Game duration in ms
    */
   async handleParallelGameComplete(result, gameId, duration) {
-    console.log('handleParallelGameComplete called: isTraining=', this.isTraining);
+    console.log('handleParallelGameComplete called: isTraining=', this.isTraining, ', result=', result);
     if (!this.isTraining) {
       console.log('handleParallelGameComplete: not isTraining. Skipping...');
       return;
@@ -521,33 +526,27 @@ export class TrainingSession {
    * @param {Object} action - Action taken
    * @param {number} reward - Reward received
    * @param {boolean} isTerminal - Whether this is the final state
+   * @param {number} logProb - Log probability of the action (optional)
    */
-  addExperience(state, action, reward, isTerminal = false) {
+  addExperience(state, action, reward, isTerminal = false, logProb = 0) {
     const experience = {
       state,
       action,
       reward,
       isTerminal,
+      logProb,
       timestamp: Date.now()
     };
 
-    // Keep local tracking for debugging/metrics
-    this.currentGameExperiences.push(experience);
-
     // Add directly to the shared experience buffer
     this.experienceBuffer.add(experience);
-    
-    // Debug logging
-    if (this.currentGameExperiences.length % 50 === 0) {
-      console.log(`Collected ${this.currentGameExperiences.length} experiences for current game`);
-    }
   }
 
   /**
    * Train the neural network
    */
   async train() {
-    console.log(`Training check: experienceBuffer size = ${this.experienceBuffer.getSize()}, currentGameExperiences = ${this.currentGameExperiences.length}`);
+    console.log(`Training check: experienceBuffer size = ${this.experienceBuffer.getSize()}`);
     
     if (this.experienceBuffer.getSize() === 0) {
       console.log('No experiences to train on');
@@ -683,8 +682,7 @@ export class TrainingSession {
     if (this.experienceBuffer) {
       this.experienceBuffer.dispose();
     }
-    
-    this.currentGameExperiences = [];
+
     this.activeParallelGames = [];
   }
 }

@@ -16,12 +16,13 @@ import { RenderSystem } from './systems/RenderSystem.js';
 export class Game {
   /**
    * Create a new Game
-   * @param {HTMLCanvasElement} canvas - Canvas element
-   * @param {CanvasRenderingContext2D} context - 2D rendering context
+   * @param {HTMLCanvasElement} canvas - Canvas element (optional, null for headless)
+   * @param {CanvasRenderingContext2D} context - 2D rendering context (optional, null for headless)
    */
-  constructor(canvas, context) {
+  constructor(canvas = null, context = null) {
     this.canvas = canvas;
     this.context = context;
+    this.isHeadless = !canvas || !context;
     
     // Game state
     this.state = GameConfig.game.states.WAITING;
@@ -29,6 +30,7 @@ export class Game {
     this.startTime = 0;
     this.endTime = 0;
     this.stepCount = 0;
+    this.cumPlayerDecisionTime = 0;
     
     // Game entities
     this.arena = null;
@@ -52,24 +54,30 @@ export class Game {
    */
   async init() {
     try {
-      console.log('Initializing game...');
+      if (!this.isHeadless) {
+        console.log('Initializing game...');
+      }
       
       // Create arena
-      this.arena = new Arena('main-arena', this.config.arena.width, this.config.arena.height);
+      const arenaId = this.isHeadless ? `headless-arena-${Date.now()}` : 'main-arena';
+      this.arena = new Arena(arenaId, this.config.arena.width, this.config.arena.height);
       
-      // Create game systems
-      this.inputSystem = new InputSystem(this.canvas);
+      // Create game systems (skip input and rendering for headless)
+      if (!this.isHeadless) {
+        this.inputSystem = new InputSystem(this.canvas);
+        this.renderSystem = new RenderSystem(this.canvas, this.context);
+        this.renderSystem.setArena(this.arena);
+      }
+      
       this.movementSystem = new MovementSystem(this.arena);
       this.collisionSystem = new CollisionSystem(this.arena);
-      this.renderSystem = new RenderSystem(this.canvas, this.context);
-      
-      // Set arena in render system
-      this.renderSystem.setArena(this.arena);
       
       // Create initial game entities
       this.createGameEntities();
       
-      console.log('Game initialized successfully');
+      if (!this.isHeadless) {
+        console.log('Game initialized successfully');
+      }
       return true;
     } catch (error) {
       console.error('Failed to initialize game:', error);
@@ -195,6 +203,7 @@ export class Game {
     this.resetGameEntities();
     
     console.log('Game started');
+    console.log('Model: ', this.players[0].getPolicyAgent().neuralNetwork.model);
   }
 
   /**
@@ -243,8 +252,10 @@ export class Game {
     // Increment step counter
     this.stepCount++;
     
-    // Update input system
-    this.inputSystem.update(deltaTime);
+    // Update input system (skip if headless)
+    if (!this.isHeadless && this.inputSystem) {
+      this.inputSystem.update(deltaTime);
+    }
     
     // Update movement system
     this.movementSystem.update(deltaTime);
@@ -252,14 +263,18 @@ export class Game {
     // Update collision system
     this.collisionSystem.update(deltaTime);
     
-    // Update render system
-    this.renderSystem.update(deltaTime);
+    // Update render system (skip if headless)
+    if (!this.isHeadless && this.renderSystem) {
+      this.renderSystem.update(deltaTime);
+    }
     
     // Update all players
     for (const player of this.players) {
       // Create game state for AI decisions
       const gameState = this.createGameState(player);
+      const startTime = Date.now();
       player.update(this.inputSystem, deltaTime, gameState);
+      this.cumPlayerDecisionTime += Date.now() - startTime;
     }
     
     // Update all AIs
@@ -308,7 +323,9 @@ export class Game {
     
     // Stop the game loop immediately when game ends
     if (this.onGameEnd) {
-      this.onGameEnd(winner);
+      this.onGameEnd(winner, this.stepCount);
+      let gameDur = this.endTime - this.startTime;
+      console.log("Average FPS: ", this.stepCount / gameDur * 1000, " Game Duration: ", gameDur, " Steps: ", this.stepCount, "  Cumulative Player Decision Time: ", this.cumPlayerDecisionTime);
     }
   }
 

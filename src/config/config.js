@@ -248,8 +248,8 @@ export const GameConfig = {
     trainingFrequency: 10, // Train every N games
     
     // Game settings
-    decisionInterval: 4, // frames between AI decisions
-    parallelGames: 10,   // number of parallel training games
+    decisionInterval: 0.25, // seconds between AI decisions
+    parallelGames: 1,   // number of parallel training games
     
     // Training algorithms
     algorithm: 'PPO', // 'PPO' or 'A2C'

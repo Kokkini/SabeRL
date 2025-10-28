@@ -15,9 +15,11 @@ export class PolicyAgent {
   constructor(config = {}) {
     this.id = config.id || this.generateId();
     this.neuralNetwork = config.neuralNetwork || new NeuralNetwork();
-    this.decisionInterval = config.decisionInterval || GameConfig.rl.decisionInterval;
+    // decisionInterval is interpreted in seconds
+    this.decisionIntervalSec = config.decisionInterval || GameConfig.rl.decisionInterval;
     this.currentDecision = null;
-    this.decisionFrameCount = 0;
+    this.decisionFrameCount = 0; // legacy; no longer used for timing
+    this.accumulatedDecisionSec = 0;
     this.isActive = false;
     this.explorationRate = config.explorationRate || GameConfig.rl.explorationRate;
     
@@ -63,19 +65,23 @@ export class PolicyAgent {
    * @param {GameState} gameState - Current game state
    * @returns {MovementDecision} Movement decision
    */
-  makeDecision(gameState) {
+  makeDecision(gameState, deltaTime) {
     try {
       if (!this.isActive) {
         return this.getRandomDecision();
       }
       
-      // Check if we need to make a new decision
-      if (this.decisionFrameCount >= this.decisionInterval) {
+      // Accumulate simulated time (deltaTime is in seconds)
+      if (typeof deltaTime === 'number' && !Number.isNaN(deltaTime)) {
+        this.accumulatedDecisionSec += deltaTime;
+      }
+
+      // Check if we need to make a new decision based on elapsed seconds
+      if (this.accumulatedDecisionSec >= this.decisionIntervalSec) {
         this.currentDecision = this.processGameState(gameState);
-        this.decisionFrameCount = 0;
+        this.accumulatedDecisionSec = 0;
       }
       
-      this.decisionFrameCount++;
       return this.currentDecision || this.getRandomDecision();
     } catch (error) {
       console.error('Failed to make decision:', error);
@@ -129,7 +135,7 @@ export class PolicyAgent {
       return new MovementDecision({
         action: actionDecision.action,
         confidence: actionDecision.confidence,
-        frameInterval: this.decisionInterval,
+        frameInterval: this.decisionIntervalSec,
         actionIndex: actionDecision.actionIndex,
         probabilities: actionDecision.probabilities,
         timestamp: actionDecision.timestamp
