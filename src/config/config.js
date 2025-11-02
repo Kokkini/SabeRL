@@ -146,8 +146,8 @@ function mergeDeep(target, source) {
 export const GameConfig = {
   // Arena settings
   arena: {
-    width: 16,        // Arena width in units
-    height: 16,       // Arena height in units
+    width: 8,        // Arena width in units
+    height: 8,       // Arena height in units
     backgroundColor: '#1a1a1a',
     borderColor: '#ffffff',
     borderWidth: 2
@@ -237,8 +237,9 @@ export const GameConfig = {
     
     // Training parameters
     learningRate: 0.001,
-    explorationRate: 0.3, // Higher exploration for untrained network
-    miniBatchSize: 30, // Mini-batch size for gradient updates
+    explorationRate: 0.1, // Higher exploration for untrained network
+    miniBatchSize: 64, // Mini-batch size for gradient updates
+    epochs: 4, // Number of epochs to train for
     rewardScaling: 1.0,
     discountFactor: 0.99,
     
@@ -255,15 +256,15 @@ export const GameConfig = {
     performanceMonitoring: true,
     
     // UI settings
-    chartUpdateFrequency: 5, // Update chart every N games
-    chartMaxDataPoints: 100,    // Keep only last N data points on charts
+    chartMaxDataPoints: 500,    // Keep only last N data points on charts
     
     // Reward structure
     rewards: {
       win: 1.0,
       loss: -1.0,
       tie: 0.0,
-      timePenalty: -0.01, // Per second penalty
+      // timePenalty: -0.01, // Per second penalty
+      timePenalty: 0.0, // Per second penalty
       timePenaltyThreshold: 0, // Start applying time penalty after this many seconds
       maxGameLength: 60   // Max game length in seconds
     },
@@ -278,10 +279,10 @@ export const GameConfig = {
     
     // Rollout configuration
     rollout: {
-      rolloutMaxLength: 2048,      // Number of experiences to collect in each rollout
+      rolloutMaxLength: 4096,      // Number of experiences to collect in each rollout
       deltaTime: 0.05,             // Fixed timestep for game updates
       actionIntervalSeconds: 0.2,   // Time between agent actions
-      yieldInterval: 50            // Yield to event loop every N experiences (for UI responsiveness)
+      yieldInterval: 10            // Yield to event loop every N experiences (for UI responsiveness)
     }
   }
 };

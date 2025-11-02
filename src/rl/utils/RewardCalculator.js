@@ -58,11 +58,6 @@ export class RewardCalculator {
       baseReward = this.tieReward;
     }
     
-    // // Calculate time penalty
-    // if (gameLength > this.timePenaltyThreshold) {
-    //   timePenalty = this.timePenalty * (gameLength - this.timePenaltyThreshold);
-    // }
-    
     // Calculate total reward
     totalReward = baseReward + timePenalty;
     

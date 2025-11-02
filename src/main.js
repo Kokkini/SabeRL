@@ -225,9 +225,13 @@ class SabeRLArena {
    * Set up UI elements
    */
   setupUI() {
-    const statusElement = document.getElementById('game-status');
-    if (statusElement) {
-      statusElement.textContent = 'Press SPACE to start';
+    const startButton = document.getElementById('start-game-button');
+    if (startButton) {
+      startButton.addEventListener('click', () => {
+        // Always start/restart game, even if already running
+        // The start() method will handle stopping the current game if needed
+        this.start();
+      });
     }
   }
 
@@ -243,15 +247,18 @@ class SabeRLArena {
     this.context.textAlign = 'center';
     this.context.fillText('SabeRL Arena', this.canvas.width / 2, this.canvas.height / 2 - 50);
     
-    this.context.font = '16px Arial';
-    this.context.fillText('Press SPACE to start', this.canvas.width / 2, this.canvas.height / 2 + 20);
-    
     this.context.font = '14px Arial';
-    this.context.fillText('Use WASD to move', this.canvas.width / 2, this.canvas.height / 2 + 50);
+    this.context.fillText('Use WASD to move', this.canvas.width / 2, this.canvas.height / 2 + 20);
+    
+    // Show start button
+    const startButton = document.getElementById('start-game-button');
+    if (startButton) {
+      startButton.style.display = 'block';
+    }
   }
 
   /**
-   * Start the game
+   * Start the game (or restart if already running)
    */
   start() {
     if (!this.isInitialized) {
@@ -259,16 +266,35 @@ class SabeRLArena {
       return;
     }
 
-    if (this.gameLoop && this.gameLoop.isRunning()) {
-      console.log('Game already running');
-      return;
-    }
-
     try {
+      // Stop current game loop if running (allows restarting during gameplay)
+      if (this.gameLoop && this.gameLoop.isRunning()) {
+        console.log('Game loop is running, stopping to start a new game...');
+        this.gameLoop.stop();
+      }
+
+      // Reset game state to WAITING and restart entities
+      if (this.game.state !== GameConfig.game.states.WAITING) {
+        console.log(`Game state is ${this.game.state}, restarting to WAITING...`);
+        this.game.restart();
+      }
+      
+      // Start new game
       this.game.start();
       this.gameLoop.start();
+      
+      // Hide start button when game starts
+      const startButton = document.getElementById('start-game-button');
+      if (startButton) {
+        startButton.style.display = 'none';
+      }
     } catch (error) {
       console.error('Error starting game:', error);
+      // Show start button again on error
+      const startButton = document.getElementById('start-game-button');
+      if (startButton) {
+        startButton.style.display = 'block';
+      }
     }
     
     // Update UI
@@ -365,6 +391,12 @@ class SabeRLArena {
     
     // Update scoreboard
     this.updateScoreboard();
+    
+    // Show start button when game ends
+    const startButton = document.getElementById('start-game-button');
+    if (startButton) {
+      startButton.style.display = 'block';
+    }
   }
 
   /**
@@ -403,11 +435,10 @@ class SabeRLArena {
       this.gameLoop.stop();
     }
     
-    // Update UI to show waiting state
-    const statusElement = document.getElementById('game-status');
-    if (statusElement) {
-      statusElement.textContent = 'Press SPACE to start';
-      statusElement.style.color = '#ffffff'; // Reset color
+    // Show start button when game is waiting
+    const startButton = document.getElementById('start-game-button');
+    if (startButton) {
+      startButton.style.display = 'block';
     }
   }
 
@@ -467,6 +498,9 @@ class SabeRLArena {
       this.trainingUI.initialize();
       this.trainingUI.setTrainingSession(this.trainingSession);
 
+      // Auto-update AI control to use trained agent if already enabled
+      this.updateAIControlToTrainedAgent();
+
       console.log('Training system initialized');
     } catch (error) {
       console.error('Failed to initialize training system:', error);
@@ -498,6 +532,36 @@ class SabeRLArena {
       
       checkChartJS();
     });
+  }
+
+  /**
+   * Update AI control to use trained agent if available and AI control is already enabled
+   * Called automatically when training session initializes
+   */
+  updateAIControlToTrainedAgent() {
+    // Only update if AI control is already enabled
+    if (!this.isAIControlEnabled || !this.game) {
+      return;
+    }
+
+    // Check if training session has a trained agent
+    if (!this.trainingSession || !this.trainingSession.policyAgent) {
+      return;
+    }
+
+    try {
+      const player = this.game.getPlayer();
+      if (player && player.isAIControlled()) {
+        // Update to use trained agent
+        player.setControlMode('ai', this.trainingSession.policyAgent);
+        
+        // Update status to show it's using trained agent
+        this.updateControlStatus('AI Control (Trained)', true);
+        console.log('Auto-updated AI control to use trained agent');
+      }
+    } catch (error) {
+      console.error('Failed to auto-update AI control to trained agent:', error);
+    }
   }
 
   /**
@@ -655,17 +719,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.addEventListener('keydown', (event) => {
       if (event.code === 'Space') {
         event.preventDefault();
-        if (!gameInstance.gameLoop || !gameInstance.gameLoop.isRunning()) {
-          // If game is in gameOver or tie state, restart it first
-          if (gameInstance.game.state === GameConfig.game.states.GAME_OVER || gameInstance.game.state === GameConfig.game.states.TIE) {
-            gameInstance.game.restart();
-          }
-          gameInstance.start();
-        }
+        // Always start/restart game, even if already running
+        // The start() method will handle stopping the current game if needed
+        gameInstance.start();
       }
     });
     
-    console.log('Game ready! Press SPACE to start.');
+    console.log('Game ready! Click Start Game button or press SPACE to start.');
   }
 });
 

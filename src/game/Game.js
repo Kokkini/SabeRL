@@ -378,7 +378,29 @@ export class Game {
     let done = false;
     let reward = 0;
     
-    if (collisionResults.gameOver) {
+    // Calculate elapsed time
+    const timeInSeconds = this.stepCount * deltaTime;
+    const maxGameLength = GameConfig.rl.rewards.maxGameLength || 60;
+    
+    // Check for timeout (game ran too long)
+    if (timeInSeconds >= maxGameLength) {
+      done = true;
+      // Force tie game on timeout
+      reward = GameConfig.rl.rewards.tie || 0;
+      
+      // Update game state
+      this.state = GameConfig.game.states.TIE;
+      this.winner = null;
+      this.endTime = Date.now();
+      
+      // Kill all entities
+      for (const p of this.players) {
+        p.kill();
+      }
+      for (const ai of this.ais) {
+        ai.kill();
+      }
+    } else if (collisionResults.gameOver) {
       done = true;
       const winner = collisionResults.winner;
       const isTie = collisionResults.tie;
@@ -407,10 +429,9 @@ export class Game {
     } else {
       // Calculate time penalty per step (only if after threshold)
       // timePenalty is per second, so multiply by deltaTime to get per-step penalty
-      const timeInSeconds = this.stepCount * deltaTime;
       const timePenaltyThreshold = GameConfig.rl.rewards.timePenaltyThreshold || 0;
       if (timeInSeconds > timePenaltyThreshold) {
-        const timePenaltyPerSecond = GameConfig.rl.rewards.timePenalty || -0.01;
+        const timePenaltyPerSecond = GameConfig.rl.rewards.timePenalty;
         reward = timePenaltyPerSecond * deltaTime; // Convert per-second to per-step
       }
     }

@@ -308,7 +308,7 @@ export class RenderSystem {
     
     switch (gameState.state) {
       case 'waiting':
-        this.context.fillText('Press SPACE to start', centerX, centerY);
+        // Start button is shown in UI, no need for canvas text
         break;
       case 'playing':
         // Game is running, no status text needed
@@ -316,12 +316,12 @@ export class RenderSystem {
       case 'gameOver':
         if (gameState.winner) {
           this.context.fillText(`Winner: ${gameState.winner.id}`, centerX, centerY);
-          this.context.fillText('Press SPACE to start', centerX, centerY + 30);
+          this.context.fillText('Click Start Game to play again', centerX, centerY + 30);
         }
         break;
       case 'tie':
         this.context.fillText('Tie Game!', centerX, centerY);
-        this.context.fillText('Press SPACE to start', centerX, centerY + 30);
+        this.context.fillText('Click Start Game to play again', centerX, centerY + 30);
         break;
       case 'paused':
         this.context.fillText('Game Paused', centerX, centerY);

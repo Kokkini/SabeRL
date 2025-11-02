@@ -60,7 +60,7 @@ export class TrainingUI {
       labels: [],
       datasets: [
         {
-          label: 'Average Game Length (steps)',
+          label: 'Average Game Length (seconds)',
           data: [],
           borderColor: '#ff9800',
           backgroundColor: 'rgba(255, 152, 0, 0.1)',
@@ -69,15 +69,29 @@ export class TrainingUI {
       ]
     };
 
-    // Win rate chart data
+    // Win/Loss/Tie rate chart data
     this.winRateChartData = {
       labels: [],
       datasets: [
         {
           label: 'Win Rate (%)',
           data: [],
-          borderColor: '#9c27b0',
-          backgroundColor: 'rgba(156, 39, 176, 0.1)',
+          borderColor: '#4caf50',
+          backgroundColor: 'rgba(76, 175, 80, 0.1)',
+          tension: 0.1
+        },
+        {
+          label: 'Loss Rate (%)',
+          data: [],
+          borderColor: '#f44336',
+          backgroundColor: 'rgba(244, 67, 54, 0.1)',
+          tension: 0.1
+        },
+        {
+          label: 'Tie Rate (%)',
+          data: [],
+          borderColor: '#ff9800',
+          backgroundColor: 'rgba(255, 152, 0, 0.1)',
           tension: 0.1
         }
       ]
@@ -91,6 +105,9 @@ export class TrainingUI {
     
     // Track individual game results for current batch
     this.currentBatchGameResults = [];
+    
+    // Track batch number for chart updates (increments after each experience collection phase)
+    this.batchNumber = 0;
   }
 
   /**
@@ -184,6 +201,11 @@ export class TrainingUI {
           </div>
         </div>
         
+        <div class="chart-container" id="win-rate-chart-container" style="display: none; height: 400px;">
+          <h4>Win / Loss / Tie Rates</h4>
+          <canvas id="win-rate-chart" width="400" height="300"></canvas>
+        </div>
+        
         <div class="chart-container" id="chart-container" style="display: none; height: 400px;">
           <h4>Reward Progress</h4>
           <canvas id="reward-chart" width="400" height="300"></canvas>
@@ -192,11 +214,6 @@ export class TrainingUI {
         <div class="chart-container" id="game-length-chart-container" style="display: none; height: 400px;">
           <h4>Average Game Length</h4>
           <canvas id="game-length-chart" width="400" height="300"></canvas>
-        </div>
-        
-        <div class="chart-container" id="win-rate-chart-container" style="display: none; height: 400px;">
-          <h4>Average Win Rate</h4>
-          <canvas id="win-rate-chart" width="400" height="300"></canvas>
         </div>
       </div>
     `;
@@ -370,7 +387,7 @@ export class TrainingUI {
             y: {
               title: {
                 display: true,
-                text: 'Game Length (steps)'
+                text: 'Game Length (seconds)'
               }
             }
           },
@@ -431,7 +448,7 @@ export class TrainingUI {
             y: {
               title: {
                 display: true,
-                text: 'Win Rate (%)'
+                text: 'Rate (%)'
               },
               min: 0,
               max: 100
@@ -902,11 +919,6 @@ export class TrainingUI {
       console.log('Average game length:', metrics.averageGameLength);
       console.log('Games completed:', metrics.gamesCompleted);
     }
-
-    // Update chart (called every game, but chart only updates every 100 games)
-    if (this.trainingSession && this.trainingSession.isTraining && metrics && metrics.gamesCompleted > 0) {
-      this.updateChart(metrics);
-    }
   }
 
   /**
@@ -924,13 +936,12 @@ export class TrainingUI {
   }
 
   /**
-   * Update reward chart (throttled to configurable frequency with batch statistics)
+   * Update reward chart (updated after every experience collection phase)
    * @param {Object} metrics - Training metrics
    */
   updateChart(metrics) {
-    const updateFrequency = GameConfig.rl.chartUpdateFrequency;
-    // Only update chart if training is active and at configured frequency
-    if (!this.trainingSession || !this.trainingSession.isTraining || metrics.gamesCompleted % updateFrequency !== 0) {
+    // Only update chart if training is active
+    if (!this.trainingSession || !this.trainingSession.isTraining) {
       return;
     }
 
@@ -954,19 +965,22 @@ export class TrainingUI {
       return;
     }
 
-    // Calculate batch statistics for the last N games (where N = updateFrequency)
-    const batchStats = this.calculateBatchStatistics(metrics, updateFrequency);
+    // Calculate batch statistics from current metrics
+    // Use current metrics directly (aggregated from all games so far)
+    const batchStats = this.calculateBatchStatistics(metrics);
     
-    console.log(`Updating chart with batch at game ${metrics.gamesCompleted}: avg=${batchStats.avg}, min=${batchStats.min}, max=${batchStats.max}`);
+    // Increment batch number for this experience collection phase
+    this.batchNumber++;
+    
+    console.log(`Updating chart with batch ${this.batchNumber} at game ${metrics.gamesCompleted}: avg=${batchStats.avg}, min=${batchStats.min}, max=${batchStats.max}`);
 
-    // Add new data point (every updateFrequency games)
-    const batchNumber = Math.floor(metrics.gamesCompleted / updateFrequency);
-    this.chart.data.labels.push(`Batch ${batchNumber}`);
+    // Add new data point (after each experience collection phase)
+    this.chart.data.labels.push(`Batch ${this.batchNumber}`);
     this.chart.data.datasets[0].data.push(batchStats.avg);
     this.chart.data.datasets[1].data.push(batchStats.min);
     this.chart.data.datasets[2].data.push(batchStats.max);
 
-    // Keep only last N data points (N batches = N * updateFrequency games)
+    // Keep only last N data points
     const maxPoints = GameConfig.rl.chartMaxDataPoints;
     if (this.chart.data.labels.length > maxPoints) {
       this.chart.data.labels.shift();
@@ -979,8 +993,8 @@ export class TrainingUI {
     this.chart.update('none');
     
     // Update other charts
-    this.updateGameLengthChart(batchStats, batchNumber);
-    this.updateWinRateChart(batchStats, batchNumber);
+    this.updateGameLengthChart(batchStats, this.batchNumber);
+    this.updateWinRateChart(batchStats, this.batchNumber);
   }
 
   /**
@@ -1006,28 +1020,33 @@ export class TrainingUI {
   }
 
   /**
-   * Update win rate chart
+   * Update win/loss/tie rate chart
    * @param {Object} batchStats - Batch statistics
    * @param {number} batchNumber - Batch number
    */
   updateWinRateChart(batchStats, batchNumber) {
     if (!this.winRateChart) return;
     
-    // Add new data point
+    // Add new data point for all three rates
     console.log('[TrainingUI] updateWinRateChart add point:', {
       batchNumber,
       winRatePercent: batchStats.winRate,
-      gamesCompleted: this.trainingSession?.gamesCompleted,
-      rawWinRate: this.trainingSession?.trainingMetrics?.winRate
+      lossRatePercent: batchStats.lossRate,
+      tieRatePercent: batchStats.tieRate,
+      gamesCompleted: this.trainingSession?.gamesCompleted
     });
     this.winRateChart.data.labels.push(`Batch ${batchNumber}`);
-    this.winRateChart.data.datasets[0].data.push(batchStats.winRate);
+    this.winRateChart.data.datasets[0].data.push(batchStats.winRate || 0);   // Win rate
+    this.winRateChart.data.datasets[1].data.push(batchStats.lossRate || 0); // Loss rate
+    this.winRateChart.data.datasets[2].data.push(batchStats.tieRate || 0);   // Tie rate
     
     // Keep only last N data points
     const maxPointsWR = GameConfig.rl.chartMaxDataPoints;
     if (this.winRateChart.data.labels.length > maxPointsWR) {
       this.winRateChart.data.labels.shift();
-      this.winRateChart.data.datasets[0].data.shift();
+      this.winRateChart.data.datasets.forEach(dataset => {
+        dataset.data.shift();
+      });
     }
     
     this.winRateChart.update('none');
@@ -1047,25 +1066,42 @@ export class TrainingUI {
   }
 
   /**
-   * Calculate batch statistics for the last N games
+   * Calculate batch statistics from metrics
    * @param {Object} metrics - Training metrics
-   * @param {number} updateFrequency - Number of games per batch
    * @returns {Object} Batch statistics
    */
-  calculateBatchStatistics(metrics, updateFrequency = 100) {
+  calculateBatchStatistics(metrics) {
     console.log('Calculating batch statistics from metrics:', metrics);
     
-    // Use metrics directly for now
+    // Use metrics directly (aggregated from all games)
     const rewardStats = metrics.rewardStats || { avg: 0, min: 0, max: 0 };
-    const avgGameLength = metrics.averageGameLength || 0;
-    const winRate = (metrics.winRate || 0) * 100; // Convert to percentage
+    
+    // Convert game length from steps to seconds
+    // gameLength is in steps (number of experiences/actions)
+    // Each step represents actionIntervalSeconds (0.2s by default)
+    const gameLengthSteps = metrics.averageGameLength || 0;
+    const actionIntervalSeconds = GameConfig.rl.rollout.actionIntervalSeconds || 0.2;
+    const avgGameLength = gameLengthSteps * actionIntervalSeconds; // Convert to seconds
+    
+    // Calculate rates as percentages
+    const gamesCompleted = metrics.gamesCompleted || 0;
+    const wins = metrics.wins || 0;
+    const losses = metrics.losses || 0;
+    const ties = metrics.ties || 0;
+    
+    const winRate = gamesCompleted > 0 ? (wins / gamesCompleted) * 100 : 0;
+    const lossRate = gamesCompleted > 0 ? (losses / gamesCompleted) * 100 : 0;
+    const tieRate = gamesCompleted > 0 ? (ties / gamesCompleted) * 100 : 0;
     
     console.log('Calculated stats:', { 
       avg: rewardStats.avg, 
       min: rewardStats.min, 
       max: rewardStats.max, 
-      avgGameLength, 
-      winRate 
+      avgGameLengthSteps: gameLengthSteps,
+      avgGameLengthSeconds: avgGameLength, 
+      winRate,
+      lossRate,
+      tieRate
     });
     
     return { 
@@ -1073,7 +1109,9 @@ export class TrainingUI {
       min: rewardStats.min, 
       max: rewardStats.max,
       avgGameLength,
-      winRate
+      winRate,
+      lossRate,
+      tieRate
     };
   }
 
@@ -1140,6 +1178,7 @@ export class TrainingUI {
     this.currentBatchGameLengths = [];
     this.currentBatchWins = [];
     this.currentBatchGameResults = [];
+    this.batchNumber = 0;
   }
 
   /**
