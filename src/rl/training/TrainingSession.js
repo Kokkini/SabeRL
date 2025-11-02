@@ -45,6 +45,17 @@ export class TrainingSession {
     this.onGameEnd = null;
     this.onTrainingProgress = null;
     this.onTrainingComplete = null;
+    
+    // Create MessageChannel for non-throttled yielding (works in background tabs)
+    this.yieldChannel = new MessageChannel();
+    this.yieldChannelResolve = null;
+    this.yieldChannel.port1.onmessage = () => {
+      if (this.yieldChannelResolve) {
+        this.yieldChannelResolve();
+        this.yieldChannelResolve = null;
+      }
+    };
+    this.yieldChannel.port2.onmessage = () => {}; // Empty handler
 
     // Training algorithm
     this.algorithm = GameConfig.rl.algorithm;
@@ -201,11 +212,37 @@ export class TrainingSession {
   }
 
   /**
+   * Yield to event loop with smart strategy based on tab visibility
+   * - Visible: setTimeout(0) allows UI updates and painting
+   * - Hidden: MessageChannel.postMessage is not throttled
+   */
+  async yieldToEventLoop() {
+    // Check if tab is hidden using Page Visibility API
+    const isHidden = typeof document !== 'undefined' && 
+                     (document.hidden || document.visibilityState === 'hidden');
+    
+    if (isHidden) {
+      // Tab is hidden: use MessageChannel (not throttled)
+      return new Promise(resolve => {
+        this.yieldChannelResolve = resolve;
+        this.yieldChannel.port2.postMessage(null);
+      });
+    } else {
+      // Tab is visible: use setTimeout(0) to allow UI updates
+      // Using 0 instead of 4ms - browser will use minimum ~4ms anyway, but this ensures UI responsiveness
+      return new Promise(resolve => setTimeout(resolve, 0));
+    }
+  }
+
+  /**
    * Main training loop: collect rollouts -> train -> update weights -> repeat
    */
   async runTrainingLoop() {
     while (this.isTraining && !this.isPaused) {
       try {
+        // Yield before collecting rollouts to ensure UI is responsive
+        await this.yieldToEventLoop();
+        
         // Collect rollouts from all collectors in parallel
         console.log('Collecting rollouts...');
         const rolloutPromises = this.rolloutCollectors.map(collector => 
@@ -214,6 +251,9 @@ export class TrainingSession {
         
         // Wait for all rollouts to complete
         const rolloutResults = await Promise.all(rolloutPromises);
+        
+        // Yield after collecting rollouts to allow UI updates
+        await this.yieldToEventLoop();
         
         // Combine all experiences from all rollouts
         const allExperiences = [];
@@ -231,10 +271,16 @@ export class TrainingSession {
           // Update metrics BEFORE training (so metrics are ready for callback)
           this.updateMetricsFromExperiences(allExperiences);
           
+          // Yield before training to allow UI updates
+          await this.yieldToEventLoop();
+          
           await this.trainWithRollouts(allExperiences, allLastValues);
           
           // Update weights in all collectors (for next iteration)
           await this.updateCollectorWeights();
+          
+          // Yield before UI update to ensure responsiveness
+          await this.yieldToEventLoop();
           
           // Update UI after training completes
           this.notifyTrainingProgress();
@@ -247,13 +293,16 @@ export class TrainingSession {
         }
         
         // Yield to event loop before next iteration
-        await new Promise(resolve => setTimeout(resolve, 0));
+        // Use different strategy based on tab visibility:
+        // - Visible: setTimeout allows UI updates and painting
+        // - Hidden: MessageChannel port.postMessage is not throttled
+        await this.yieldToEventLoop();
         
       } catch (error) {
         console.error('Error in training loop:', error);
         // Continue training loop even if one iteration fails
         // Yield even on error to prevent complete freeze
-        await new Promise(resolve => setTimeout(resolve, 0));
+        await this.yieldToEventLoop();
       }
     }
     
@@ -426,15 +475,19 @@ export class TrainingSession {
       this.trainingMetrics.trainingTime = Date.now() - this.trainingStartTime;
     }
     
-    // Call onTrainingProgress callback for UI updates
-    if (this.onTrainingProgress) {
-      this.onTrainingProgress(this.trainingMetrics);
-    }
-    
-    // Also call onGameEnd for games completed display (using null winner to indicate batch update)
-    if (this.onGameEnd && this.gamesCompleted > 0) {
-      this.onGameEnd(null, this.gamesCompleted, this.trainingMetrics);
-    }
+    // Schedule UI updates asynchronously to avoid blocking training
+    // Use setTimeout to ensure UI updates happen in next event loop cycle
+    setTimeout(() => {
+      // Call onTrainingProgress callback for UI updates
+      if (this.onTrainingProgress) {
+        this.onTrainingProgress(this.trainingMetrics);
+      }
+      
+      // Also call onGameEnd for games completed display (using null winner to indicate batch update)
+      if (this.onGameEnd && this.gamesCompleted > 0) {
+        this.onGameEnd(null, this.gamesCompleted, this.trainingMetrics);
+      }
+    }, 0);
   }
 
   /**

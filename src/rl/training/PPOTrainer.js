@@ -9,6 +9,17 @@ import { GameStateProcessor } from '../utils/GameStateProcessor.js';
 
 export class PPOTrainer {
   constructor(options = {}) {
+    // Create MessageChannel for non-throttled yielding (works in background tabs)
+    this.yieldChannel = new MessageChannel();
+    this.yieldChannelResolve = null;
+    this.yieldChannel.port1.onmessage = () => {
+      if (this.yieldChannelResolve) {
+        this.yieldChannelResolve();
+        this.yieldChannelResolve = null;
+      }
+    };
+    this.yieldChannel.port2.onmessage = () => {}; // Empty handler
+    
     this.options = {
       learningRate: options.learningRate || GameConfig.rl.learningRate,
       clipRatio: options.clipRatio || 0.2,
@@ -68,12 +79,34 @@ export class PPOTrainer {
         await this.trainEpoch(trainingData, policyModel, valueModel);
         
         // Yield to event loop after each epoch to keep UI responsive
-        await new Promise(resolve => setTimeout(resolve, 0));
+        await this.yieldToEventLoop();
       }
 
       console.log('PPO Training completed');
     } catch (error) {
       console.error('PPO Training error:', error);
+    }
+  }
+  
+  /**
+   * Yield to event loop with smart strategy based on tab visibility
+   * - Visible: setTimeout(0) allows UI updates
+   * - Hidden: MessageChannel.postMessage is not throttled
+   */
+  async yieldToEventLoop() {
+    // Check if tab is hidden using Page Visibility API
+    const isHidden = typeof document !== 'undefined' && 
+                     (document.hidden || document.visibilityState === 'hidden');
+    
+    if (isHidden) {
+      // Tab is hidden: use MessageChannel (not throttled)
+      return new Promise(resolve => {
+        this.yieldChannelResolve = resolve;
+        this.yieldChannel.port2.postMessage(null);
+      });
+    } else {
+      // Tab is visible: use setTimeout(0) to allow UI updates
+      return new Promise(resolve => setTimeout(resolve, 0));
     }
   }
 
@@ -190,7 +223,7 @@ export class PPOTrainer {
       await this.trainBatch(batch, policyModel, valueModel);
       
       // Yield to event loop after each mini-batch to keep UI responsive
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await this.yieldToEventLoop();
     }
   }
 

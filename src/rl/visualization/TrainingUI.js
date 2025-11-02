@@ -855,16 +855,25 @@ export class TrainingUI {
    * @param {Object} metrics - Training metrics
    */
   updateTrainingProgress(metrics) {
+    // Update metrics immediately (lightweight DOM updates)
     this.updateMetrics(metrics);
     
-    // Only update chart if we have valid training data
+    // Schedule chart update asynchronously to avoid blocking training
     if (metrics && metrics.gamesCompleted > 0) {
       console.log('[TrainingUI] updateTrainingProgress:', {
         gamesCompleted: metrics.gamesCompleted,
         winRateRaw: metrics.winRate,
         winRatePercent: metrics.winRate * 100
       });
-      this.updateChart(metrics);
+      
+      // Use requestAnimationFrame when tab is visible, setTimeout when hidden
+      const isHidden = typeof document !== 'undefined' && 
+                       (document.hidden || document.visibilityState === 'hidden');
+      if (isHidden) {
+        setTimeout(() => this.updateChart(metrics), 0);
+      } else {
+        requestAnimationFrame(() => this.updateChart(metrics));
+      }
     }
   }
 
@@ -945,18 +954,33 @@ export class TrainingUI {
       return;
     }
 
-    // Show chart container when we have data to display
+    // Show chart container when we have data to display (schedule async)
     if (this.chartContainerDiv && metrics.gamesCompleted > 0) {
-      this.chartContainerDiv.style.display = 'block';
+      // Use requestAnimationFrame for smooth display when visible
+      const isHidden = typeof document !== 'undefined' && 
+                       (document.hidden || document.visibilityState === 'hidden');
+      if (isHidden) {
+        this.chartContainerDiv.style.display = 'block';
+      } else {
+        requestAnimationFrame(() => {
+          this.chartContainerDiv.style.display = 'block';
+        });
+      }
     }
 
-    // Try to initialize chart if not already done
+    // Try to initialize chart if not already done (schedule async to avoid blocking)
     if (!this.chart && typeof Chart === 'function') {
-      this.initializeChart();
+      // Initialize charts asynchronously to avoid blocking
+      setTimeout(() => {
+        if (!this.chart || !this.gameLengthChart || !this.winRateChart) {
+          this.initializeAllCharts();
+        }
+      }, 0);
+      return; // Return early, will update next time
     }
 
     if (!this.chart) {
-      console.warn('Chart not initialized, skipping update');
+      // Charts not ready yet, skip this update
       return;
     }
 
@@ -989,12 +1013,27 @@ export class TrainingUI {
       });
     }
 
-    // Update chart
-    this.chart.update('none');
+    // Schedule chart updates asynchronously to avoid blocking
+    // Use requestAnimationFrame when tab is visible for smooth updates
+    // Use setTimeout when tab is hidden
+    const isHidden = typeof document !== 'undefined' && 
+                     (document.hidden || document.visibilityState === 'hidden');
     
-    // Update other charts
-    this.updateGameLengthChart(batchStats, this.batchNumber);
-    this.updateWinRateChart(batchStats, this.batchNumber);
+    if (isHidden) {
+      // Tab hidden: use setTimeout for immediate update
+      setTimeout(() => {
+        this.chart.update('none');
+        this.updateGameLengthChart(batchStats, this.batchNumber);
+        this.updateWinRateChart(batchStats, this.batchNumber);
+      }, 0);
+    } else {
+      // Tab visible: use requestAnimationFrame for smooth rendering
+      requestAnimationFrame(() => {
+        this.chart.update('none');
+        this.updateGameLengthChart(batchStats, this.batchNumber);
+        this.updateWinRateChart(batchStats, this.batchNumber);
+      });
+    }
   }
 
   /**
