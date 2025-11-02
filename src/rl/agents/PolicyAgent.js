@@ -177,6 +177,138 @@ export class PolicyAgent {
   }
 
   /**
+   * Act on observation (for rollout-based training)
+   * @param {Object} observation - Game state observation
+   * @param {Object} valueModel - Optional value model for value estimation
+   * @returns {Object} {action: number, value: number, logProb: number}
+   */
+  act(observation, valueModel = null) {
+    try {
+      if (!this.isActive) {
+        // Return random action if not active
+        const randomIndex = Math.floor(Math.random() * 4);
+        return {
+          action: randomIndex,
+          value: 0,
+          logProb: Math.log(0.25) // log(1/4) for uniform random
+        };
+      }
+
+      // Process game state into normalized features
+      const processedState = this.stateProcessor.processState(observation);
+      
+      // Get logits directly from the model (before softmax)
+      let input;
+      if (Array.isArray(processedState)) {
+        input = tf.tensor2d([processedState], [1, this.neuralNetwork.architecture.inputSize]);
+      } else if (processedState instanceof tf.Tensor) {
+        input = processedState.reshape([1, this.neuralNetwork.architecture.inputSize]);
+      } else {
+        throw new Error('Invalid processed state format');
+      }
+      
+      // Get raw logits from model
+      const logits = this.neuralNetwork.model.predict(input);
+      
+      // Apply softmax to get probabilities
+      const probs = tf.softmax(logits);
+      const logProbs = tf.log(probs.add(1e-8));
+      
+      // Get probabilities as array for action selection
+      const probabilities = probs.dataSync();
+      
+      // Sample action (with exploration)
+      let actionIndex;
+      if (Math.random() < this.explorationRate) {
+        // Random exploration
+        actionIndex = Math.floor(Math.random() * 4);
+      } else {
+        // Use predicted action (highest probability)
+        let maxIndex = 0;
+        let maxProb = probabilities[0];
+        for (let i = 1; i < probabilities.length; i++) {
+          if (probabilities[i] > maxProb) {
+            maxProb = probabilities[i];
+            maxIndex = i;
+          }
+        }
+        actionIndex = maxIndex;
+      }
+      
+      // Get log probability of selected action
+      const logProbValue = logProbs.gather(actionIndex).dataSync()[0];
+      
+      // Get value estimate if value model provided
+      let value = 0;
+      if (valueModel) {
+        const valuePred = valueModel.predict(input);
+        value = valuePred.dataSync()[0];
+        valuePred.dispose();
+      }
+      
+      // Clean up tensors
+      input.dispose();
+      logits.dispose();
+      probs.dispose();
+      logProbs.dispose();
+      
+      return {
+        action: actionIndex,
+        value: value,
+        logProb: logProbValue
+      };
+    } catch (error) {
+      console.error('Failed to act:', error);
+      // Return random action as fallback
+      return {
+        action: Math.floor(Math.random() * 4),
+        value: 0,
+        logProb: Math.log(0.25)
+      };
+    }
+  }
+
+  /**
+   * Get value estimate for observation (for bootstrapping)
+   * @param {Object} observation - Game state observation
+   * @param {Object} valueModel - Value model for value estimation
+   * @returns {number} Value estimate
+   */
+  getValue(observation, valueModel) {
+    try {
+      if (!valueModel) {
+        return 0;
+      }
+
+      // Process game state into normalized features
+      const processedState = this.stateProcessor.processState(observation);
+      
+      // Prepare input tensor
+      let input;
+      if (Array.isArray(processedState)) {
+        input = tf.tensor2d([processedState], [1, this.neuralNetwork.architecture.inputSize]);
+      } else if (processedState instanceof tf.Tensor) {
+        input = processedState.reshape([1, this.neuralNetwork.architecture.inputSize]);
+      } else {
+        throw new Error('Invalid processed state format');
+      }
+      
+      // Get value estimate
+      const valuePred = valueModel.predict(input);
+      const value = valuePred.dataSync()[0];
+      
+      // Clean up
+      input.dispose();
+      valuePred.dispose();
+      
+      return value;
+    } catch (error) {
+      console.error('Failed to get value:', error);
+      return 0;
+    }
+  }
+
+  /**
    * Get random decision as fallback
    * @returns {MovementDecision} Random decision
    */

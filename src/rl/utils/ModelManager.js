@@ -67,12 +67,34 @@ export class ModelManager {
 
   /**
    * Save a neural network model
+   * Only keeps the current/latest model - overwrites previous saves
    * @param {Object} model - Neural network model
    * @param {Object} metadata - Additional metadata
    * @returns {Promise<string>} Model ID
    */
   async saveModel(model, metadata = {}) {
     try {
+      // Use fixed key for current model - overwrites previous save
+      const FIXED_MODEL_KEY = `${this.storagePrefix}current_model`;
+      
+      // Delete old model data before saving new one (free up space)
+      const oldModelData = localStorage.getItem(FIXED_MODEL_KEY);
+      if (oldModelData) {
+        // Try to parse old model to get its ID for cleanup
+        try {
+          const oldData = JSON.parse(oldModelData);
+          if (oldData.id) {
+            // Remove from IndexedDB if it exists
+            await this.deleteFromIndexedDB('models', oldData.id);
+          }
+        } catch (e) {
+          // Ignore parse errors for old data
+        }
+      }
+      
+      // Delete all old model entries from localStorage
+      this.cleanupOldModels();
+      
       const modelId = model.id || this.generateModelId();
       const serializedModel = model.serialize();
       
@@ -86,15 +108,15 @@ export class ModelManager {
         }
       };
       
-      // Save to localStorage
-      const storageKey = `${this.storagePrefix}model_${modelId}`;
-      localStorage.setItem(storageKey, JSON.stringify(modelData));
+      // Save to localStorage with fixed key (overwrites previous)
+      localStorage.setItem(FIXED_MODEL_KEY, JSON.stringify(modelData));
       
-      // Save to IndexedDB for backup
-      await this.saveToIndexedDB('models', modelData);
-      
-      // Update model list
-      await this.updateModelList(modelId, modelData);
+      // Save to IndexedDB for backup (also overwrites with fixed ID)
+      const indexedDBData = {
+        id: 'current_model', // Fixed ID for IndexedDB too
+        ...modelData
+      };
+      await this.saveToIndexedDB('models', indexedDBData);
       
       console.log(`Model saved successfully: ${modelId}`);
       return modelId;
@@ -105,14 +127,47 @@ export class ModelManager {
   }
 
   /**
+   * Clean up old model entries from localStorage
+   * Removes all model entries except the current one
+   */
+  cleanupOldModels() {
+    try {
+      const FIXED_MODEL_KEY = `${this.storagePrefix}current_model`;
+      const keysToRemove = [];
+      
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(this.storagePrefix) && key.includes('model_') && key !== FIXED_MODEL_KEY) {
+          keysToRemove.push(key);
+        }
+      }
+      
+      keysToRemove.forEach(key => {
+        localStorage.removeItem(key);
+        console.log(`Removed old model: ${key}`);
+      });
+      
+      // Also clear the model list
+      const modelListKey = `${this.storagePrefix}model_list`;
+      localStorage.removeItem(modelListKey);
+      
+    } catch (error) {
+      console.error('Failed to cleanup old models:', error);
+    }
+  }
+
+  /**
    * Load a neural network model
-   * @param {string} modelId - Model ID
+   * @param {string} modelId - Model ID (optional, defaults to current model)
    * @returns {Promise<Object>} Loaded model
    */
-  async loadModel(modelId) {
+  async loadModel(modelId = null) {
     try {
-      // Try localStorage first
-      const storageKey = `${this.storagePrefix}model_${modelId}`;
+      // If no modelId provided, load the current model
+      const storageKey = modelId 
+        ? `${this.storagePrefix}model_${modelId}`
+        : `${this.storagePrefix}current_model`;
+      
       const storedData = localStorage.getItem(storageKey);
       
       if (storedData) {
@@ -120,13 +175,14 @@ export class ModelManager {
         return this.deserializeModel(modelData.model);
       }
       
-      // Fallback to IndexedDB
-      const modelData = await this.loadFromIndexedDB('models', modelId);
+      // Fallback to IndexedDB (try current_model first, then provided ID)
+      const dbId = modelId || 'current_model';
+      const modelData = await this.loadFromIndexedDB('models', dbId);
       if (modelData) {
         return this.deserializeModel(modelData.model);
       }
       
-      throw new Error(`Model not found: ${modelId}`);
+      throw new Error(`Model not found: ${modelId || 'current_model'}`);
     } catch (error) {
       console.error('Failed to load model:', error);
       throw error;

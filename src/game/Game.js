@@ -301,6 +301,134 @@ export class Game {
   }
 
   /**
+   * Start rollout and return initial observation (for rollout-based training)
+   * @returns {Object} Initial game state/observation
+   */
+  startRollout() {
+    // Reset game state
+    this.state = GameConfig.game.states.PLAYING;
+    this.winner = null;
+    this.startTime = Date.now();
+    this.endTime = 0;
+    this.stepCount = 0;
+    
+    // Reset all entities
+    this.resetGameEntities();
+    
+    // Return initial observation
+    const player = this.getPlayer();
+    return this.createGameState(player);
+  }
+
+  /**
+   * Update game for rollout with given action (for rollout-based training)
+   * @param {number} actionIndex - Action index (0=W, 1=A, 2=S, 3=D)
+   * @param {number} deltaTime - Time since last update in seconds
+   * @returns {Object} {observation, done, reward}
+   */
+  updateRollout(actionIndex, deltaTime) {
+    if (this.state !== GameConfig.game.states.PLAYING) {
+      // Game already ended, return final state
+      const player = this.getPlayer();
+      const observation = this.createGameState(player);
+      return {
+        observation,
+        done: true,
+        reward: 0 // No reward change after game ended
+      };
+    }
+    
+    // Increment step counter
+    this.stepCount++;
+    
+    // Apply action to player
+    const player = this.getPlayer();
+    if (player) {
+      player.applyActionByIndex(actionIndex);
+      
+      // Update player position
+      const velocity = player.getVelocity();
+      const newPosition = player.getPosition().add(velocity.mul(deltaTime));
+      
+      // Check arena boundaries
+      if (this.arena && this.arena.isPositionValidTensor(newPosition, player.getRadius())) {
+        player.setPosition(newPosition);
+      } else if (this.arena) {
+        const constrainedPos = this.arena.constrainPositionTensor(newPosition, player.getRadius());
+        player.setPosition(constrainedPos);
+      }
+    }
+    
+    // Update AI movement
+    for (const ai of this.ais) {
+      ai.update(deltaTime);
+    }
+    
+    // Update saber rotations
+    if (player) {
+      player.getSaber().update(deltaTime);
+    }
+    for (const ai of this.ais) {
+      ai.getSaber().update(deltaTime);
+    }
+    
+    // Check for collisions
+    const collisionResults = this.collisionSystem.checkCollisions(
+      this.players, this.ais, deltaTime
+    );
+    
+    // Handle collision results and check if game ended
+    let done = false;
+    let reward = 0;
+    
+    if (collisionResults.gameOver) {
+      done = true;
+      const winner = collisionResults.winner;
+      const isTie = collisionResults.tie;
+      
+      // Calculate terminal reward (win/loss/tie)
+      if (isTie) {
+        reward = GameConfig.rl.rewards.tie || 0;
+      } else if (winner && winner.id === 'player-1') {
+        reward = GameConfig.rl.rewards.win || 1.0;
+      } else {
+        reward = GameConfig.rl.rewards.loss || -1.0;
+      }
+      
+      // Update game state
+      this.state = isTie ? GameConfig.game.states.TIE : GameConfig.game.states.GAME_OVER;
+      this.winner = winner;
+      this.endTime = Date.now();
+      
+      // Kill all entities
+      for (const p of this.players) {
+        p.kill();
+      }
+      for (const ai of this.ais) {
+        ai.kill();
+      }
+    } else {
+      // Calculate time penalty per step (only if after threshold)
+      // timePenalty is per second, so multiply by deltaTime to get per-step penalty
+      const timeInSeconds = this.stepCount * deltaTime;
+      const timePenaltyThreshold = GameConfig.rl.rewards.timePenaltyThreshold || 0;
+      if (timeInSeconds > timePenaltyThreshold) {
+        const timePenaltyPerSecond = GameConfig.rl.rewards.timePenalty || -0.01;
+        reward = timePenaltyPerSecond * deltaTime; // Convert per-second to per-step
+      }
+    }
+    
+    // Return new observation
+    const observation = this.createGameState(player);
+    
+    return {
+      observation,
+      done,
+      reward
+    };
+  }
+
+  /**
    * End the game
    * @param {Object} winner - Winning entity
    * @param {boolean} tie - Whether it's a tie game

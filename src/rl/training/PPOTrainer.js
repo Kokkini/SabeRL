@@ -47,8 +47,9 @@ export class PPOTrainer {
    * @param {Array} experiences - Array of experience objects
    * @param {Object} policyModel - Policy neural network model
    * @param {Object} valueModel - Value function model (optional)
+   * @param {Array} lastValues - Optional last values for bootstrapping (deprecated, using nextValue in experiences instead)
    */
-  async train(experiences, policyModel, valueModel = null) {
+  async train(experiences, policyModel, valueModel = null, lastValues = null) {
     if (experiences.length === 0) {
       return;
     }
@@ -65,6 +66,9 @@ export class PPOTrainer {
       // Train for multiple epochs
       for (let epoch = 0; epoch < this.options.epochs; epoch++) {
         await this.trainEpoch(trainingData, policyModel, valueModel);
+        
+        // Yield to event loop after each epoch to keep UI responsive
+        await new Promise(resolve => setTimeout(resolve, 0));
       }
 
       console.log('PPO Training completed');
@@ -84,18 +88,22 @@ export class PPOTrainer {
     const rewards = [];
     const oldLogProbs = [];
     const values = [];
+    const nextValues = []; // For bootstrapping in GAE
     const dones = [];
 
     console.log(`PPO: Preparing training data from ${experiences.length} experiences`);
 
     for (const exp of experiences) {
-      if (exp.state && exp.action !== undefined) {
-        states.push(exp.state);
+      // Handle both 'observation' (rollouts) and 'state' (legacy) field names
+      const state = exp.observation || exp.state;
+      if (state && exp.action !== undefined) {
+        states.push(state);
         actions.push(exp.action);
         rewards.push(exp.reward || 0);
         oldLogProbs.push(exp.logProb || 0);
         values.push(exp.value || 0);
-        dones.push(exp.isTerminal ? 1 : 0);
+        nextValues.push(exp.nextValue !== null && exp.nextValue !== undefined ? exp.nextValue : (exp.done ? 0 : (exp.value || 0)));
+        dones.push(exp.done || exp.isTerminal ? 1 : 0);
       }
     }
 
@@ -112,6 +120,7 @@ export class PPOTrainer {
         rewards: tf.tensor1d([]),
         oldLogProbs: tf.tensor1d([]),
         values: tf.tensor1d([]),
+        nextValues: tf.tensor1d([]),
         dones: tf.tensor1d([])
       };
     }
@@ -184,6 +193,7 @@ export class PPOTrainer {
       rewards: tf.tensor1d(rewards),
       oldLogProbs: tf.tensor1d(oldLogProbs),
       values: tf.tensor1d(values),
+      nextValues: tf.tensor1d(nextValues),
       dones: tf.tensor1d(dones)
     };
   }
@@ -211,10 +221,14 @@ export class PPOTrainer {
         rewards: data.rewards.slice([start], [end - start]),
         oldLogProbs: data.oldLogProbs.slice([start], [end - start]),
         values: data.values.slice([start], [end - start]),
+        nextValues: data.nextValues ? data.nextValues.slice([start], [end - start]) : null,
         dones: data.dones.slice([start], [end - start])
       };
 
       await this.trainBatch(batch, policyModel, valueModel);
+      
+      // Yield to event loop after each mini-batch to keep UI responsive
+      await new Promise(resolve => setTimeout(resolve, 0));
     }
   }
 
@@ -238,7 +252,7 @@ export class PPOTrainer {
       const advStd = advantages.sub(advMean).square().mean().sqrt();
       const normAdvantages = advantages.sub(advMean).div(advStd.add(1e-8));
 
-      console.log("batch.states", batch.states);
+      // console.log("batch.states", batch.states);
       // Get current policy predictions. batch.states is a tensor with shape [batchSize, 9]
       const policyOutput = policyModel.predict(batch.states);
       
@@ -310,7 +324,8 @@ export class PPOTrainer {
 
   /**
    * Compute advantages using GAE (Generalized Advantage Estimation)
-   * @param {Object} batch - Batch data
+   * @param {Object} batch - Batch data with nextValues for bootstrapping
+   * @param {tf.Tensor} valuesTensor - Current value predictions
    * @returns {Object} Advantages and returns
    */
   computeAdvantages(batch, valuesTensor) {
@@ -320,6 +335,8 @@ export class PPOTrainer {
     const rewards = batch.rewards.dataSync();
     const dones = batch.dones.dataSync();
     const valuesArr = valuesTensor.dataSync();
+    // Use nextValues from batch for proper bootstrapping
+    const nextValuesArr = batch.nextValues ? batch.nextValues.dataSync() : null;
 
     const advantages = [];
     const returns = [];
@@ -327,7 +344,15 @@ export class PPOTrainer {
     let advantage = 0;
     for (let t = rewards.length - 1; t >= 0; t--) {
       const v = valuesArr[t] || 0;
-      const nextV = (t === rewards.length - 1 || dones[t]) ? 0 : (valuesArr[t + 1] || 0);
+      // Use nextValue from experience if available, otherwise fall back to next value in array
+      let nextV = 0;
+      if (nextValuesArr) {
+        nextV = dones[t] ? 0 : (nextValuesArr[t] || 0); // Use bootstrapped nextValue
+      } else {
+        // Fallback to old behavior
+        nextV = (t === rewards.length - 1 || dones[t]) ? 0 : (valuesArr[t + 1] || 0);
+      }
+      
       const delta = rewards[t] + gamma * nextV - v;
       advantage = delta + gamma * lambda * (1 - dones[t]) * advantage;
       advantages.unshift(advantage);

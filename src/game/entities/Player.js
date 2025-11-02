@@ -152,6 +152,41 @@ export class Player {
   }
 
   /**
+   * Apply action by index (for rollout-based training)
+   * @param {number} actionIndex - Action index (0=W, 1=A, 2=S, 3=D)
+   */
+  applyActionByIndex(actionIndex) {
+    // Reset input state
+    this.inputState.up = false;
+    this.inputState.left = false;
+    this.inputState.down = false;
+    this.inputState.right = false;
+    
+    // Set input based on action index
+    switch (actionIndex) {
+      case 0: // W
+        this.inputState.up = true;
+        break;
+      case 1: // A
+        this.inputState.left = true;
+        break;
+      case 2: // S
+        this.inputState.down = true;
+        break;
+      case 3: // D
+        this.inputState.right = true;
+        break;
+      default:
+        // No action (stay still)
+        break;
+    }
+    
+    // Calculate movement vector and update velocity
+    const movementVector = this.calculateMovementVector();
+    this.velocity = movementVector.mul(this.movementSpeed);
+  }
+
+  /**
    * Calculate movement vector from input state
    * @returns {tf.Tensor} Normalized movement vector
    */

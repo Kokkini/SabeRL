@@ -58,10 +58,10 @@ export class RewardCalculator {
       baseReward = this.tieReward;
     }
     
-    // Calculate time penalty
-    if (gameLength > this.timePenaltyThreshold) {
-      timePenalty = this.timePenalty * (gameLength - this.timePenaltyThreshold);
-    }
+    // // Calculate time penalty
+    // if (gameLength > this.timePenaltyThreshold) {
+    //   timePenalty = this.timePenalty * (gameLength - this.timePenaltyThreshold);
+    // }
     
     // Calculate total reward
     totalReward = baseReward + timePenalty;
@@ -229,7 +229,7 @@ export class RewardCalculator {
   }
 
   /**
-   * Calculate advantage (for PPO/A2C)
+   * Calculate advantage (for PPO)
    * @param {Array} rewards - Array of rewards
    * @param {Array} values - Array of value estimates
    * @param {number} discountFactor - Discount factor

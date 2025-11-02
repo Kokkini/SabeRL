@@ -720,9 +720,25 @@ export class TrainingUI {
       return;
     }
 
-    this.trainingSession.pause();
-    this.updateButtonStates('paused');
-    this.updateStatus('Paused');
+    if (this.trainingSession.isPaused) {
+      // If already paused, resume training
+      this.trainingSession.resume();
+      this.updateButtonStates('training');
+      this.updateStatus('Training');
+      // Update button text back to Pause
+      if (this.pauseButton) {
+        this.pauseButton.textContent = 'Pause';
+      }
+    } else {
+      // Pause training
+      this.trainingSession.pause();
+      this.updateButtonStates('paused');
+      this.updateStatus('Paused');
+      // Update button text to show it can resume
+      if (this.pauseButton) {
+        this.pauseButton.textContent = 'Resume';
+      }
+    }
     
     // Keep charts visible when training is paused
     // Charts remain displayed to show training progress
@@ -790,7 +806,7 @@ export class TrainingUI {
 
   /**
    * Update game end display
-   * @param {string} winner - Winner of the game
+   * @param {string} winner - Winner of the game (null for batch updates)
    * @param {number} gamesCompleted - Number of games completed
    * @param {Object} metrics - Training metrics
    */
@@ -803,15 +819,18 @@ export class TrainingUI {
 
     // Update win rate
     const winRateElement = document.getElementById('win-rate');
-    if (winRateElement) {
-      winRateElement.textContent = `${(metrics.winRate * 100).toFixed(1)}%`;
+    if (winRateElement && metrics) {
+      const winRate = metrics.winRate || 0;
+      winRateElement.textContent = `${(winRate * 100).toFixed(1)}%`;
     }
 
     // Update progress bar
     this.updateProgressBar(gamesCompleted);
 
-    // Update metrics
-    this.updateMetrics(metrics);
+    // Update metrics (only if metrics provided)
+    if (metrics) {
+      this.updateMetrics(metrics);
+    }
   }
 
   /**

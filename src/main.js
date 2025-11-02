@@ -456,8 +456,7 @@ class SabeRLArena {
       // Create training session
       this.trainingSession = new TrainingSession(this.game, {
         maxGames: 1000,
-        autoSaveInterval: GameConfig.rl.autoSaveInterval,
-        trainingFrequency: GameConfig.rl.trainingFrequency
+        autoSaveInterval: GameConfig.rl.autoSaveInterval
       });
 
       // Initialize training session
@@ -505,8 +504,8 @@ class SabeRLArena {
    * Toggle AI control mode
    */
   toggleAIControl() {
-    if (!this.game || !this.policyAgent) {
-      console.error('Game or policy agent not available');
+    if (!this.game) {
+      console.error('Game not available');
       return;
     }
 
@@ -514,11 +513,27 @@ class SabeRLArena {
       this.isAIControlEnabled = !this.isAIControlEnabled;
       
       if (this.isAIControlEnabled) {
-        // Enable AI control
+        // Enable AI control - use trained agent if available, otherwise use untrained agent
         const player = this.game.getPlayer();
         if (player) {
-          player.setControlMode('ai', this.policyAgent);
-          this.updateControlStatus('AI Control', true);
+          // Prefer trained agent from training session if available
+          let agentToUse = this.policyAgent; // Fallback to untrained agent
+          let isTrained = false;
+          
+          if (this.trainingSession && this.trainingSession.policyAgent) {
+            // Use the trained agent from training session
+            agentToUse = this.trainingSession.policyAgent;
+            isTrained = true;
+            console.log('Using trained agent from training session');
+          } else {
+            console.log('Using untrained agent (training session not initialized or no trained agent)');
+          }
+          
+          player.setControlMode('ai', agentToUse);
+          
+          // Update status to show if using trained agent
+          const statusText = isTrained ? 'AI Control (Trained)' : 'AI Control';
+          this.updateControlStatus(statusText, true);
           this.updateControlButton('Disable AI Control', true);
           console.log('AI control enabled');
         }

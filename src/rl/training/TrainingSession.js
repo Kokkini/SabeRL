@@ -7,11 +7,9 @@ import { GameConfig } from '../../config/config.js';
 import { PolicyAgent } from '../agents/PolicyAgent.js';
 import { NeuralNetwork } from '../agents/NeuralNetwork.js';
 import { TrainingMetrics } from '../entities/TrainingMetrics.js';
-import { RewardCalculator } from '../utils/RewardCalculator.js';
 import { ModelManager } from '../utils/ModelManager.js';
 import { PPOTrainer } from './PPOTrainer.js';
-import { A2CTrainer } from './A2CTrainer.js';
-import { ExperienceBuffer } from './ExperienceBuffer.js';
+import { RolloutCollector } from './RolloutCollector.js';
 import { Game } from '../../game/Game.js';
 
 export class TrainingSession {
@@ -20,7 +18,6 @@ export class TrainingSession {
     this.options = {
       maxGames: options.maxGames || 1000,
       autoSaveInterval: options.autoSaveInterval || GameConfig.rl.autoSaveInterval,
-      trainingFrequency: options.trainingFrequency || GameConfig.rl.trainingFrequency,
       ...options
     };
 
@@ -35,25 +32,11 @@ export class TrainingSession {
     // AI and training components
     this.policyAgent = null;
     this.trainingMetrics = new TrainingMetrics();
-    // Initialize RewardCalculator with config from GameConfig.rl.rewards
-    const rc = GameConfig.rl.rewards || {};
-    const rewardConfig = {
-      winReward: rc.win,
-      lossReward: rc.loss,
-      tieReward: rc.tie ?? 0,
-      timePenalty: rc.timePenalty,
-      maxGameLength: rc.maxGameLength,
-      timePenaltyThreshold: rc.timePenaltyThreshold ?? 0
-    };
-    console.log('[TrainingSession] Initializing RewardCalculator with config:', rewardConfig);
-    this.rewardCalculator = new RewardCalculator(rewardConfig);
     this.modelManager = new ModelManager();
 
-    // Experience storage
-    this.experienceBuffer = new ExperienceBuffer({
-      maxSize: 10000,
-      batchSize: GameConfig.rl.batchSize // Use config batch size for sampling
-    });
+    // Rollout collectors for parallel experience collection
+    this.rolloutCollectors = [];
+    this.numRollouts = GameConfig.rl.parallelGames;
 
     // Track last game result for UI
     this.lastGameResult = null;
@@ -68,11 +51,7 @@ export class TrainingSession {
     this.trainer = null;
     this.valueModel = null;
 
-    // Parallel training (simplified - no Web Workers)
-    this.parallelGames = GameConfig.rl.parallelGames;
-    this.activeParallelGames = [];
-    this.parallelGamesCompleted = 0;
-    this.parallelGameCounter = 0;
+    // Old parallel training removed - using rollout system instead
   }
 
   /**
@@ -92,23 +71,18 @@ export class TrainingSession {
         }
       });
 
-      // Create policy agent with experience collection callback
+      // Create policy agent (no experience callback - rollouts handle collection)
       this.policyAgent = new PolicyAgent({
         neuralNetwork: neuralNetwork,
         decisionInterval: GameConfig.rl.decisionInterval,
-        explorationRate: GameConfig.rl.explorationRate,
-        onExperience: (experience) => this.addExperience(
-          experience.state,
-          experience.action,
-          experience.reward,
-          experience.isTerminal
-        )
+        explorationRate: GameConfig.rl.explorationRate
       });
 
       // Initialize trainer based on algorithm
       await this.initializeTrainer();
 
-      // Initialize parallel training (no setup needed for simplified version)
+      // Initialize rollout collectors
+      await this.initializeRolloutCollectors();
 
       // Don't set up game callbacks yet - only when training starts
 
@@ -124,7 +98,7 @@ export class TrainingSession {
    * Initialize the training algorithm
    */
   async initializeTrainer() {
-    // Create value model for A2C
+    // Create value model for PPO
     this.valueModel = new NeuralNetwork({
       architecture: {
         inputSize: 9, // Game state size (4 pos + 2 angles + 2 velocity + 1 distance)
@@ -134,30 +108,61 @@ export class TrainingSession {
       }
     });
 
-    // Initialize trainer based on algorithm
-    if (this.algorithm === 'PPO') {
-      this.trainer = new PPOTrainer({
-        learningRate: GameConfig.rl.learningRate,
-        miniBatchSize: GameConfig.rl.miniBatchSize
-      });
-    } else if (this.algorithm === 'A2C') {
-      this.trainer = new A2CTrainer({
-        learningRate: GameConfig.rl.learningRate,
-        miniBatchSize: GameConfig.rl.miniBatchSize
-      });
-    } else {
-      throw new Error(`Unsupported training algorithm: ${this.algorithm}`);
+    // Initialize PPO trainer
+    if (this.algorithm !== 'PPO') {
+      throw new Error(`Unsupported training algorithm: ${this.algorithm}. Only PPO is supported.`);
     }
+    
+    this.trainer = new PPOTrainer({
+      learningRate: GameConfig.rl.learningRate,
+      miniBatchSize: GameConfig.rl.miniBatchSize
+    });
   }
 
   /**
-   * Set up game callbacks for training
+   * Initialize rollout collectors for parallel experience collection
+   */
+  async initializeRolloutCollectors() {
+    this.rolloutCollectors = [];
+    
+    const rolloutConfig = GameConfig.rl.rollout;
+    
+    for (let i = 0; i < this.numRollouts; i++) {
+      // Create headless game for each collector
+      const headlessGame = new Game();
+      await headlessGame.init();
+      
+      // Create a copy of the policy agent for this collector
+      // Note: In a worker-based system, this would be done in the worker
+      // For now, we'll use the shared agent (will need to clone properly for workers)
+      const collector = new RolloutCollector(
+        headlessGame,
+        this.policyAgent,
+        this.valueModel.model,
+        {
+          rolloutMaxLength: rolloutConfig.rolloutMaxLength,
+          deltaTime: rolloutConfig.deltaTime,
+          actionIntervalSeconds: rolloutConfig.actionIntervalSeconds,
+          yieldInterval: rolloutConfig.yieldInterval || 50
+        }
+      );
+      
+      this.rolloutCollectors.push(collector);
+    }
+    
+    console.log(`Initialized ${this.rolloutCollectors.length} rollout collectors`);
+  }
+
+  /**
+   * Set up game callbacks for training (for main visible game - optional)
    */
   setupGameCallbacks() {
-    // Override game callbacks for training
-    this.originalOnGameEnd = this.game.onGameEnd;
-    this.game.onGameEnd = (winner) => this.handleGameEnd(winner);
-    console.log('Game callbacks set up for training');
+    // Override game callbacks for training (if main game is used)
+    if (this.game) {
+      this.originalOnGameEnd = this.game.onGameEnd;
+      this.game.onGameEnd = (winner) => this.handleGameEnd(winner);
+      console.log('Game callbacks set up for training');
+    }
   }
 
 
@@ -177,26 +182,81 @@ export class TrainingSession {
       this.trainingStartTime = Date.now();
       this.currentGame = 0;
       this.gamesCompleted = 0;
-      this.parallelGamesCompleted = 0;
-
-      // Set up game callbacks for training (for the main visible game)
-      this.setupGameCallbacks();
 
       // Reset metrics
       this.trainingMetrics.reset();
 
-      // Start parallel training games
-      this.startParallelTraining();
-
-      // Start the main visible game
-      console.log('Starting main visible game...');
-      await this.startNextGame();
+      // Start rollout-based training loop (don't await - it runs asynchronously)
+      this.runTrainingLoop().catch(error => {
+        console.error('Training loop error:', error);
+        this.isTraining = false;
+      });
 
       console.log('Training session started');
     } catch (error) {
       console.error('Failed to start training session:', error);
       this.isTraining = false;
     }
+  }
+
+  /**
+   * Main training loop: collect rollouts -> train -> update weights -> repeat
+   */
+  async runTrainingLoop() {
+    while (this.isTraining && !this.isPaused) {
+      try {
+        // Collect rollouts from all collectors in parallel
+        console.log('Collecting rollouts...');
+        const rolloutPromises = this.rolloutCollectors.map(collector => 
+          collector.collectRollout()
+        );
+        
+        // Wait for all rollouts to complete
+        const rolloutResults = await Promise.all(rolloutPromises);
+        
+        // Combine all experiences from all rollouts
+        const allExperiences = [];
+        const allLastValues = [];
+        
+        for (const result of rolloutResults) {
+          allExperiences.push(...result.rolloutBuffer);
+          allLastValues.push(result.lastValue);
+        }
+        
+        console.log(`Collected ${allExperiences.length} experiences from ${rolloutResults.length} rollouts`);
+        
+        // Train PPO with collected experiences
+        if (allExperiences.length > 0) {
+          // Update metrics BEFORE training (so metrics are ready for callback)
+          this.updateMetricsFromExperiences(allExperiences);
+          
+          await this.trainWithRollouts(allExperiences, allLastValues);
+          
+          // Update weights in all collectors (for next iteration)
+          await this.updateCollectorWeights();
+          
+          // Update UI after training completes
+          this.notifyTrainingProgress();
+        }
+        
+        // Check if training should continue
+        if (this.gamesCompleted >= this.options.maxGames) {
+          await this.completeTraining();
+          break;
+        }
+        
+        // Yield to event loop before next iteration
+        await new Promise(resolve => setTimeout(resolve, 0));
+        
+      } catch (error) {
+        console.error('Error in training loop:', error);
+        // Continue training loop even if one iteration fails
+        // Yield even on error to prevent complete freeze
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+    }
+    
+    console.log('Training loop exited');
   }
 
   /**
@@ -221,6 +281,14 @@ export class TrainingSession {
 
     this.isPaused = false;
     console.log('Training session resumed');
+    
+    // Restart the training loop if it exited
+    if (this.isTraining && !this.isPaused) {
+      this.runTrainingLoop().catch(error => {
+        console.error('Training loop error on resume:', error);
+        this.isTraining = false;
+      });
+    }
   }
 
   /**
@@ -234,11 +302,18 @@ export class TrainingSession {
     this.isTraining = false;
     this.isPaused = false;
 
-    // Stop parallel training
-    this.stopParallelTraining();
+    // Dispose rollout collectors
+    if (this.rolloutCollectors) {
+      for (const collector of this.rolloutCollectors) {
+        if (collector.game) {
+          collector.game.dispose();
+        }
+      }
+      this.rolloutCollectors = [];
+    }
 
-    // Restore original game callbacks
-    if (this.originalOnGameEnd) {
+    // Restore original game callbacks (if main game is used)
+    if (this.game && this.originalOnGameEnd) {
       this.game.onGameEnd = this.originalOnGameEnd;
       this.originalOnGameEnd = null;
     }
@@ -250,357 +325,23 @@ export class TrainingSession {
   }
 
   /**
-   * Start parallel training games (simplified version)
+   * Train with rollout experiences
+   * @param {Array} experiences - Rollout experiences
+   * @param {Array} lastValues - Last values for bootstrapping
    */
-  startParallelTraining() {
-    console.log('startParallelTraining (simplified version) called: isTraining=', this.isTraining, 'isPaused=', this.isPaused);
-    if (!this.isTraining || this.isPaused) {
-      return;
-    }
-
-    try {
-      // Start multiple parallel games using setTimeout to avoid blocking
-      for (let i = 0; i < this.parallelGames; i++) {
-        setTimeout(() => {
-          this.runParallelGame();
-        }, i * 100); // Stagger start times slightly
-      }
-      
-      console.log(`Started ${this.parallelGames} parallel training games`);
-    } catch (error) {
-      console.error('Failed to start parallel training:', error);
-    }
-  }
-
-  /**
-   * Stop parallel training
-   */
-  stopParallelTraining() {
-    this.activeParallelGames = [];
-    console.log('Parallel training stopped');
-  }
-
-  /**
-   * Run a single parallel game (headless, no rendering)
-   */
-  async runParallelGame() {
-    if (!this.isTraining || this.isPaused) {
-      return;
-    }
-
-    const gameId = `parallel_${this.parallelGameCounter++}`;
-    const startTime = Date.now();
-    
-    try {
-      // Create a headless game instance (no canvas/context)
-      const headlessGame = new Game();
-      await headlessGame.init();
-      
-      // Use the shared policy agent (no need to clone - agent is stateless)
-      // Each game's Player maintains its own decision state
-      const player = headlessGame.getPlayer();
-      if (player) {
-        player.setControlMode('ai', this.policyAgent, true); // true = isSharedAgent
-      }
-      
-      // Set game end callback
-      let gameEnded = false;
-      headlessGame.onGameEnd = (winner, steps) => {
-        gameEnded = true;
-        const gameResult = {
-          winner,
-          gameLength: steps
-        };
-        this.handleParallelGameComplete(gameResult, gameId, Date.now() - startTime);
-        
-        // Clean up (no agent to dispose, just the game)
-        headlessGame.dispose();
-      };
-      
-      // Start the game
-      headlessGame.start();
-      
-      // Run game loop (fast forward without rendering)
-      const targetFPS = GameConfig.rl.headless?.targetFPS || 10;
-      const deltaTime = 1 / targetFPS; // Fixed time step
-      const maxSteps = GameConfig.rl.rewards.maxGameLength * targetFPS;
-      const yieldEverySteps = GameConfig.rl.headless?.yieldEverySteps ?? 0;
-
-      for (let step = 0; step < maxSteps && !gameEnded; step++) {
-        headlessGame.update(deltaTime);
-        
-        // Yield control periodically to avoid blocking (configurable)
-        if (yieldEverySteps > 0 && step % yieldEverySteps === 0) {
-          await new Promise(resolve => setTimeout(resolve, 0));
-        }
-      }
-      
-      // If game didn't end naturally, manually trigger end callback
-      if (!gameEnded) {
-        const gameResult = {
-          winner: 'tie',
-          gameLength: headlessGame.stepCount
-        };
-        this.handleParallelGameComplete(gameResult, gameId, Date.now() - startTime);
-        
-        // Clean up (no agent to dispose, just the game)
-        headlessGame.dispose();
-      }
-      
-    } catch (error) {
-      console.error(`Parallel game ${gameId} failed:`, error);
-    }
-  }
-
-  /**
-   * Start next training game (main visible game)
-   */
-  async startNextGame() {
-    if (!this.isTraining || this.isPaused) {
-      console.log('startNextGame: not training or paused');
-      return;
-    }
-
-    try {
-      this.currentGame++;
-      console.log(`Starting training game ${this.currentGame}`);
-
-      // Set player to AI control
-      const player = this.game.getPlayer();
-      if (player) {
-        player.setControlMode('ai', this.policyAgent);
-        console.log('Player set to AI control with policy agent');
-      } else {
-        console.log('No player found!');
-      }
-
-      // Start the game
-      this.game.restart();
-      this.game.start();
-      console.log('Game restarted and started');
-    } catch (error) {
-      console.error('Failed to start next game:', error);
-    }
-  }
-
-  /**
-   * Handle parallel game completion
-   * @param {Object} result - Game result
-   * @param {string} gameId - Game ID
-   * @param {number} duration - Game duration in ms
-   */
-  async handleParallelGameComplete(result, gameId, duration) {
-    console.log('handleParallelGameComplete called: isTraining=', this.isTraining, ', result=', result);
-    if (!this.isTraining) {
-      console.log('handleParallelGameComplete: not isTraining. Skipping...');
-      return;
-    }
-
-    try {
-      this.parallelGamesCompleted++;
-      this.gamesCompleted++;
-
-      // Calculate reward
-      const rewardData = this.rewardCalculator.calculateReward({
-        won: result.winner && result.winner.id === 'player-1',
-        lost: result.winner && result.winner.id === 'ai-1',
-        isTie: result.winner === 'tie',
-        gameLength: result.gameLength
-      });
-      
-      // Update metrics
-      this.trainingMetrics.updateGameResult({
-        won: result.winner && result.winner.id === 'player-1',
-        gameLength: result.gameLength,
-        reward: rewardData.totalReward,
-        isTie: result.winner === 'tie'
-      });
-      console.log('[TrainingSession] parallel game metrics:', {
-        winner: result.winner,
-        won: result.winner && result.winner.id === 'player-1',
-        isTie: result.winner === 'tie',
-        gameLength: result.gameLength,
-        reward: rewardData.totalReward,
-        gamesCompleted: this.trainingMetrics.gamesCompleted,
-        wins: this.trainingMetrics.wins,
-        winRateRaw: this.trainingMetrics.winRate,
-        winRatePercent: this.trainingMetrics.winRate * 100
-      });
-
-      // Add to experience buffer
-      this.addExperience(result.gameState, result.decision, rewardData.totalReward, false);
-      // Train if needed
-      if (this.gamesCompleted % this.options.trainingFrequency === 0) {
-        await this.train();
-      }
-
-      // Auto-save if needed
-      if (this.gamesCompleted % this.options.autoSaveInterval === 0) {
-        await this.saveModel();
-      }
-
-      // Check if training should continue
-      if (this.gamesCompleted >= this.options.maxGames) {
-        await this.completeTraining();
-      } else {
-        // Start another parallel game to maintain the parallel count
-        setTimeout(() => {
-          this.runParallelGame();
-        }, Math.random() * 1000); // Random delay between 0-1 seconds
-      }
-
-      // Notify callbacks
-      if (this.onGameEnd) {
-        console.log('handleParallelGameComplete: calling onGameEnd callback');
-        this.onGameEnd(result.winner, this.gamesCompleted, this.trainingMetrics);
-      }
-
-      // console.log(`Parallel game ${gameId} completed. Total games: ${this.gamesCompleted}/${this.options.maxGames}`);
-
-    } catch (error) {
-      console.error('Error handling parallel game completion:', error);
-    }
-  }
-
-
-  /**
-   * Handle game end for training (main visible game)
-   * @param {string} winner - Winner of the game
-   */
-  async handleGameEnd(winner) {
-    console.log(`handleGameEnd called: winner=${winner}, isTraining=${this.isTraining}`);
-    
-    if (!this.isTraining) {
-      // If not training, call the original callback to maintain normal game flow
-      if (this.originalOnGameEnd) {
-        this.originalOnGameEnd(winner);
-      }
-      return;
-    }
-
-    try {
-      this.gamesCompleted++;
-      const gameLength = this.game.stepCount;
-      console.log(`Game ${this.gamesCompleted} ended: winner=${winner}, length=${gameLength} steps`);
-
-      // Calculate reward
-      const rewardData = this.rewardCalculator.calculateReward({
-        won: winner && winner.id === 'player-1',
-        lost: winner && winner.id === 'ai-1',
-        isTie: winner === 'tie',
-        gameLength: gameLength
-      });
-      
-      // Store last game result for UI
-      this.lastGameResult = {
-        won: winner && winner.id === 'player-1',
-        gameLength: gameLength,
-        reward: rewardData.totalReward
-      };
-      
-      // Add final experience with reward
-      this.addExperience(null, null, rewardData.totalReward, true);
-
-      // Update metrics
-      this.trainingMetrics.updateGameResult({
-        won: winner && winner.id === 'player-1',
-        gameLength: gameLength,
-        reward: rewardData.totalReward,
-        isTie: winner === 'tie'
-      });
-      console.log('[TrainingSession] main game metrics:', {
-        winner,
-        won: winner && winner.id === 'player-1',
-        isTie: winner === 'tie',
-        gameLength,
-        reward: rewardData.totalReward,
-        gamesCompleted: this.trainingMetrics.gamesCompleted,
-        wins: this.trainingMetrics.wins,
-        winRateRaw: this.trainingMetrics.winRate,
-        winRatePercent: this.trainingMetrics.winRate * 100
-      });
-
-      // Experiences are added live to the buffer during gameplay
-      console.log('Experiences are added live to buffer; skipping batch add');
-
-      // Train if needed
-      if (this.gamesCompleted % this.options.trainingFrequency === 0) {
-        await this.train();
-      }
-
-      // Auto-save if needed
-      if (this.gamesCompleted % this.options.autoSaveInterval === 0) {
-        await this.saveModel();
-      }
-
-      // Check if training should continue
-      if (this.gamesCompleted >= this.options.maxGames) {
-        await this.completeTraining();
-      } else {
-        // Start next game after a short delay
-        setTimeout(() => {
-          this.startNextGame();
-        }, 100);
-      }
-
-      // Notify callbacks
-      if (this.onGameEnd) {
-        this.onGameEnd(winner, this.gamesCompleted, this.trainingMetrics);
-      }
-
-    } catch (error) {
-      console.error('Error handling game end:', error);
-    }
-  }
-
-  /**
-   * Add experience to current game
-   * @param {Object} state - Game state
-   * @param {Object} action - Action taken
-   * @param {number} reward - Reward received
-   * @param {boolean} isTerminal - Whether this is the final state
-   * @param {number} logProb - Log probability of the action (optional)
-   */
-  addExperience(state, action, reward, isTerminal = false, logProb = 0) {
-    const experience = {
-      state,
-      action,
-      reward,
-      isTerminal,
-      logProb,
-      timestamp: Date.now()
-    };
-
-    // Add directly to the shared experience buffer
-    this.experienceBuffer.add(experience);
-  }
-
-  /**
-   * Train the neural network
-   */
-  async train() {
-    console.log(`Training check: experienceBuffer size = ${this.experienceBuffer.getSize()}`);
-    
-    if (this.experienceBuffer.getSize() === 0) {
+  async trainWithRollouts(experiences, lastValues) {
+    if (experiences.length === 0) {
       console.log('No experiences to train on');
       return;
     }
 
     try {
-      const experiences = this.experienceBuffer.sample();
-      console.log(`Training with ${experiences.length} experiences`);
+      console.log(`Training PPO with ${experiences.length} experiences`);
       
-      // Use trainer to update model
-      if (this.algorithm === 'PPO') {
-        await this.trainer.train(experiences, this.policyAgent.neuralNetwork.model, this.valueModel.model);
-      } else if (this.algorithm === 'A2C') {
-        await this.trainer.train(experiences, this.policyAgent.neuralNetwork.model, this.valueModel.model);
-      }
+      // Use PPO trainer to update model with bootstrapped last values
+      await this.trainer.train(experiences, this.policyAgent.neuralNetwork.model, this.valueModel.model, lastValues);
 
-      // Notify training progress
-      if (this.onTrainingProgress) {
-        this.onTrainingProgress(this.trainingMetrics);
-      }
+      // Note: gamesCompleted is updated in updateMetricsFromExperiences
 
     } catch (error) {
       console.error('Training error:', error);
@@ -608,13 +349,116 @@ export class TrainingSession {
   }
 
   /**
+   * Update metrics from rollout experiences
+   * @param {Array} experiences - Rollout experiences
+   */
+  updateMetricsFromExperiences(experiences) {
+    // Calculate statistics from experiences
+    let wins = 0;
+    let losses = 0;
+    let ties = 0;
+    
+    // Track current game
+    let currentGameLength = 0;
+    let currentGameTotalReward = 0;
+    
+    for (const exp of experiences) {
+      currentGameTotalReward += exp.reward;
+      currentGameLength++;
+      
+      if (exp.done) {
+        // Game ended - determine outcome from the terminal reward
+        // When done=true, exp.reward contains the terminal reward (win/loss/tie)
+        // Win reward is 1.0, loss is -1.0, tie is 0.0 (from config)
+        // But it might have time penalties, so check the magnitude
+        const terminalReward = exp.reward;
+        let won = false;
+        let isTie = false;
+        
+        // Determine outcome based on terminal reward
+        // Win: reward > 0 (typically 1.0, but may have small time penalties)
+        // Loss: reward < 0 (typically -1.0, but may have time penalties making it worse)
+        // Tie: reward close to 0
+        if (terminalReward > 0.3) {
+          // Positive reward = win (accounting for possible time penalties)
+          won = true;
+          wins++;
+        } else if (terminalReward < -0.3) {
+          // Negative reward = loss
+          won = false;
+          losses++;
+        } else {
+          // Close to zero = tie
+          won = false;
+          isTie = true;
+          ties++;
+        }
+        
+        // Update metrics with this game's result
+        this.trainingMetrics.updateGameResult({
+          won: won,
+          gameLength: currentGameLength,
+          reward: currentGameTotalReward, // Total reward for the game (includes all step rewards)
+          isTie: isTie
+        });
+        
+        // Reset for next game
+        currentGameLength = 0;
+        currentGameTotalReward = 0;
+      }
+    }
+    
+    // Update games completed count
+    const completedGames = wins + losses + ties;
+    if (completedGames > 0) {
+      this.gamesCompleted += completedGames;
+      console.log(`[TrainingSession] Updated metrics: ${completedGames} games completed (${wins}W ${losses}L ${ties}T), total games: ${this.gamesCompleted}`);
+    }
+  }
+
+  /**
+   * Notify UI about training progress
+   */
+  notifyTrainingProgress() {
+    // Update training time
+    if (this.trainingStartTime > 0) {
+      this.trainingMetrics.trainingTime = Date.now() - this.trainingStartTime;
+    }
+    
+    // Call onTrainingProgress callback for UI updates
+    if (this.onTrainingProgress) {
+      this.onTrainingProgress(this.trainingMetrics);
+    }
+    
+    // Also call onGameEnd for games completed display (using null winner to indicate batch update)
+    if (this.onGameEnd && this.gamesCompleted > 0) {
+      this.onGameEnd(null, this.gamesCompleted, this.trainingMetrics);
+    }
+  }
+
+  /**
+   * Update weights in all rollout collectors after training
+   */
+  async updateCollectorWeights() {
+    // Since collectors use shared agent/model, weights are automatically updated
+    // (they reference the same objects)
+    // In a worker-based system, we would send updated weights here
+    console.log('Collector weights updated (shared references)');
+  }
+
+  /**
+   * Train the neural network (legacy method - kept for compatibility)
+   */
+  async train() {
+    // Legacy method - not used in rollout-based training
+    console.warn('Legacy train() method called - use trainWithRollouts() instead');
+  }
+
+  /**
    * Complete training session
    */
   async completeTraining() {
     console.log('Training session completed');
-    
-    // Final training
-    await this.train();
     
     // Save final model
     await this.saveModel();
@@ -655,9 +499,9 @@ export class TrainingSession {
 
   /**
    * Load model from localStorage
-   * @param {string} modelId - Model ID to load
+   * @param {string} modelId - Model ID to load (optional, defaults to current model)
    */
-  async loadModel(modelId) {
+  async loadModel(modelId = null) {
     try {
       const modelData = await this.modelManager.loadModel(modelId);
       if (modelData) {
@@ -668,7 +512,7 @@ export class TrainingSession {
         this.policyAgent.neuralNetwork.dispose();
         this.policyAgent.neuralNetwork = loadedNetwork;
         
-        console.log(`Model loaded: ${modelId}`);
+        console.log(`Model loaded: ${modelId || 'current_model'}`);
         return true;
       }
       return false;
@@ -712,10 +556,6 @@ export class TrainingSession {
       this.trainer.dispose();
     }
     
-    if (this.experienceBuffer) {
-      this.experienceBuffer.dispose();
-    }
-
-    this.activeParallelGames = [];
+    // Note: experienceBuffer removed - rollouts don't use it
   }
 }

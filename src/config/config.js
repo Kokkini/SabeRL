@@ -35,9 +35,6 @@ export function validateConfig(config = GameConfig) {
   if (config.rl.explorationRate < 0 || config.rl.explorationRate > 1) {
     errors.push('Exploration rate must be between 0 and 1');
   }
-  if (config.rl.batchSize <= 0) {
-    errors.push('Batch size must be positive');
-  }
   if (config.rl.discountFactor < 0 || config.rl.discountFactor > 1) {
     errors.push('Discount factor must be between 0 and 1');
   }
@@ -107,7 +104,6 @@ export function applyDefaults(config) {
       hiddenLayers: [128, 64, 32],
       learningRate: 0.001,
       explorationRate: 0.1,
-      batchSize: 32,
       discountFactor: 0.99,
       decisionInterval: 4,
       parallelGames: 10,
@@ -242,18 +238,16 @@ export const GameConfig = {
     // Training parameters
     learningRate: 0.001,
     explorationRate: 0.3, // Higher exploration for untrained network
-    batchSize: 300, // Total batch size for training
     miniBatchSize: 30, // Mini-batch size for gradient updates
     rewardScaling: 1.0,
     discountFactor: 0.99,
-    trainingFrequency: 10, // Train every N games
     
     // Game settings
     decisionInterval: 0.25, // seconds between AI decisions
     parallelGames: 1,   // number of parallel training games
     
     // Training algorithms
-    algorithm: 'PPO', // 'PPO' or 'A2C'
+    algorithm: 'PPO', // Only PPO is supported
     
     // Performance settings
     maxMemoryUsage: 2 * 1024 * 1024 * 1024, // 2GB
@@ -268,8 +262,9 @@ export const GameConfig = {
     rewards: {
       win: 1.0,
       loss: -1.0,
-      // timePenalty: -0.01, // Per second penalty
-      timePenalty: 0.0,
+      tie: 0.0,
+      timePenalty: -0.01, // Per second penalty
+      timePenaltyThreshold: 0, // Start applying time penalty after this many seconds
       maxGameLength: 60   // Max game length in seconds
     },
 
@@ -279,6 +274,14 @@ export const GameConfig = {
       targetFPS: 10,
       // Yield to event loop every N steps to keep UI responsive. 0 disables yielding.
       yieldEverySteps: 0
+    },
+    
+    // Rollout configuration
+    rollout: {
+      rolloutMaxLength: 2048,      // Number of experiences to collect in each rollout
+      deltaTime: 0.05,             // Fixed timestep for game updates
+      actionIntervalSeconds: 0.2,   // Time between agent actions
+      yieldInterval: 50            // Yield to event loop every N experiences (for UI responsiveness)
     }
   }
 };
