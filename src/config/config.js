@@ -266,7 +266,8 @@ export const GameConfig = {
       // timePenalty: -0.01, // Per second penalty
       timePenalty: 0.0, // Per second penalty
       timePenaltyThreshold: 0, // Start applying time penalty after this many seconds
-      maxGameLength: 60   // Max game length in seconds
+      maxGameLength: 60,   // Max game length in seconds
+      distancePenaltyFactor: -0.002 // Per second penalty proportional to distance (distance * factor)
     },
 
     // Headless simulation tuning

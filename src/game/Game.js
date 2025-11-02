@@ -434,6 +434,20 @@ export class Game {
         const timePenaltyPerSecond = GameConfig.rl.rewards.timePenalty;
         reward = timePenaltyPerSecond * deltaTime; // Convert per-second to per-step
       }
+      
+      // Calculate distance-based penalty per second
+      // distancePenaltyFactor is per second, so multiply by deltaTime to get per-step penalty
+      const distancePenaltyFactor = GameConfig.rl.rewards.distancePenaltyFactor || 0;
+      if (distancePenaltyFactor !== 0 && player) {
+        const ai = this.getAI();
+        if (ai) {
+          const playerPos = player.getPosition();
+          const aiPos = ai.getPosition();
+          const distance = playerPos.distance(aiPos);
+          const distancePenaltyPerSecond = distance * distancePenaltyFactor;
+          reward += distancePenaltyPerSecond * deltaTime; // Convert per-second to per-step
+        }
+      }
     }
     
     // Return new observation
