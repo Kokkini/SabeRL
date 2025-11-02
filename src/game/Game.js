@@ -3,7 +3,6 @@
  * Coordinates between all game systems and manages the overall game flow
  */
 
-// TensorFlow.js is loaded from CDN as a global 'tf' object
 import { GameConfig } from '../config/config.js';
 import { Arena } from './entities/Arena.js';
 import { Player } from './entities/Player.js';
@@ -12,6 +11,7 @@ import { InputSystem } from './systems/InputSystem.js';
 import { MovementSystem } from './systems/MovementSystem.js';
 import { CollisionSystem } from './systems/CollisionSystem.js';
 import { RenderSystem } from './systems/RenderSystem.js';
+import { Vector2 } from '../utils/Vector2.js';
 
 export class Game {
   /**
@@ -111,7 +111,7 @@ export class Game {
    * Generate random positions with minimum distance between entities
    * @param {number} count - Number of positions to generate
    * @param {number} minDistance - Minimum distance between positions
-   * @returns {Array<tf.Tensor>} Array of position tensors
+   * @returns {Array<Vector2>} Array of position vectors
    */
   generateRandomPositions(count, minDistance) {
     const positions = [];
@@ -153,27 +153,24 @@ export class Game {
 
   /**
    * Calculate distance between two positions
-   * @param {tf.Tensor} pos1 - First position
-   * @param {tf.Tensor} pos2 - Second position
+   * @param {Vector2} pos1 - First position
+   * @param {Vector2} pos2 - Second position
    * @returns {number} Distance between positions
    */
   calculateDistance(pos1, pos2) {
-    const distance = tf.norm(pos1.sub(pos2));
-    const result = distance.dataSync()[0];
-    distance.dispose();
-    return result;
+    return pos1.distance(pos2);
   }
 
   /**
    * Get fallback position if random generation fails
    * @param {number} index - Entity index
-   * @returns {tf.Tensor} Fallback position
+   * @returns {Vector2} Fallback position
    */
   getFallbackPosition(index) {
     // Use predefined positions as fallback
     const fallbackPositions = [
-      tf.tensor2d([[this.config.player.initialPosition.x, this.config.player.initialPosition.y]]),
-      tf.tensor2d([[this.config.ai.initialPosition.x, this.config.ai.initialPosition.y]])
+      new Vector2(this.config.player.initialPosition.x, this.config.player.initialPosition.y),
+      new Vector2(this.config.ai.initialPosition.x, this.config.ai.initialPosition.y)
     ];
     
     return fallbackPositions[index] || fallbackPositions[0];
@@ -348,13 +345,13 @@ export class Game {
       
       // Update player position
       const velocity = player.getVelocity();
-      const newPosition = player.getPosition().add(velocity.mul(deltaTime));
+      const newPosition = player.getPosition().clone().add(velocity.clone().multiplyScalar(deltaTime));
       
       // Check arena boundaries
-      if (this.arena && this.arena.isPositionValidTensor(newPosition, player.getRadius())) {
+      if (this.arena && this.arena.isPositionValidVector(newPosition, player.getRadius())) {
         player.setPosition(newPosition);
       } else if (this.arena) {
-        const constrainedPos = this.arena.constrainPositionTensor(newPosition, player.getRadius());
+        const constrainedPos = this.arena.constrainPositionVector(newPosition, player.getRadius());
         player.setPosition(constrainedPos);
       }
     }
@@ -550,7 +547,7 @@ export class Game {
     // Restore entities
     if (state.players) {
       this.players = state.players.map(pState => {
-        const player = new Player(pState.id, tf.tensor2d([[pState.position.x, pState.position.y]]));
+        const player = new Player(pState.id, new Vector2(pState.position.x, pState.position.y));
         player.setState(pState);
         return player;
       });
@@ -558,7 +555,7 @@ export class Game {
     
     if (state.ais) {
       this.ais = state.ais.map(aState => {
-        const ai = new AI(aState.id, tf.tensor2d([[aState.position.x, aState.position.y]]));
+        const ai = new AI(aState.id, new Vector2(aState.position.x, aState.position.y));
         ai.setState(aState);
         return ai;
       });

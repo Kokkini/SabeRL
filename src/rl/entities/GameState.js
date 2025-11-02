@@ -3,10 +3,26 @@
  * Contains all information the AI needs to make decisions
  */
 
+import { Vector2 } from '../../utils/Vector2.js';
+
 export class GameState {
   constructor(data = {}) {
-    this.playerPosition = data.playerPosition || tf.tensor([0, 0]);
-    this.opponentPosition = data.opponentPosition || tf.tensor([0, 0]);
+    // Convert Vector2 or array to Vector2
+    if (data.playerPosition instanceof Vector2) {
+      this.playerPosition = data.playerPosition;
+    } else if (Array.isArray(data.playerPosition)) {
+      this.playerPosition = new Vector2(data.playerPosition[0] || 0, data.playerPosition[1] || 0);
+    } else {
+      this.playerPosition = new Vector2(0, 0);
+    }
+    
+    if (data.opponentPosition instanceof Vector2) {
+      this.opponentPosition = data.opponentPosition;
+    } else if (Array.isArray(data.opponentPosition)) {
+      this.opponentPosition = new Vector2(data.opponentPosition[0] || 0, data.opponentPosition[1] || 0);
+    } else {
+      this.opponentPosition = new Vector2(0, 0);
+    }
     this.playerSaberAngle = data.playerSaberAngle || 0;
     this.playerSaberAngularVelocity = data.playerSaberAngularVelocity || 0;
     this.opponentSaberAngle = data.opponentSaberAngle || 0;
@@ -25,25 +41,22 @@ export class GameState {
     // Validate positions are within arena bounds (assuming 20x20 arena)
     const arenaSize = 20;
     
-    if (this.playerPosition.shape[0] !== 2) {
-      throw new Error('Player position must be 2D vector');
+    if (!(this.playerPosition instanceof Vector2)) {
+      throw new Error('Player position must be Vector2');
     }
     
-    if (this.opponentPosition.shape[0] !== 2) {
-      throw new Error('Opponent position must be 2D vector');
+    if (!(this.opponentPosition instanceof Vector2)) {
+      throw new Error('Opponent position must be Vector2');
     }
     
     // Check if positions are within bounds
-    const playerPos = this.playerPosition.dataSync();
-    const opponentPos = this.opponentPosition.dataSync();
-    
-    if (playerPos[0] < 0 || playerPos[0] > arenaSize || 
-        playerPos[1] < 0 || playerPos[1] > arenaSize) {
+    if (this.playerPosition.x < 0 || this.playerPosition.x > arenaSize || 
+        this.playerPosition.y < 0 || this.playerPosition.y > arenaSize) {
       throw new Error('Player position out of bounds');
     }
     
-    if (opponentPos[0] < 0 || opponentPos[0] > arenaSize || 
-        opponentPos[1] < 0 || opponentPos[1] > arenaSize) {
+    if (this.opponentPosition.x < 0 || this.opponentPosition.x > arenaSize || 
+        this.opponentPosition.y < 0 || this.opponentPosition.y > arenaSize) {
       throw new Error('Opponent position out of bounds');
     }
     
@@ -70,13 +83,11 @@ export class GameState {
     try {
       // Normalize positions to [0, 1] range (assuming 20x20 arena)
       const arenaSize = 20;
-      const playerPos = this.playerPosition.dataSync();
-      const opponentPos = this.opponentPosition.dataSync();
       
-      const normalizedPlayerX = playerPos[0] / arenaSize;
-      const normalizedPlayerY = playerPos[1] / arenaSize;
-      const normalizedOpponentX = opponentPos[0] / arenaSize;
-      const normalizedOpponentY = opponentPos[1] / arenaSize;
+      const normalizedPlayerX = this.playerPosition.x / arenaSize;
+      const normalizedPlayerY = this.playerPosition.y / arenaSize;
+      const normalizedOpponentX = this.opponentPosition.x / arenaSize;
+      const normalizedOpponentY = this.opponentPosition.y / arenaSize;
       
       // Normalize angles to [0, 1] range
       const normalizedPlayerAngle = this.playerSaberAngle / (2 * Math.PI);
@@ -106,12 +117,9 @@ export class GameState {
    */
   getRelativeState() {
     try {
-      const playerPos = this.playerPosition.dataSync();
-      const opponentPos = this.opponentPosition.dataSync();
-      
       // Calculate relative position
-      const relativeX = opponentPos[0] - playerPos[0];
-      const relativeY = opponentPos[1] - playerPos[1];
+      const relativeX = this.opponentPosition.x - this.playerPosition.x;
+      const relativeY = this.opponentPosition.y - this.playerPosition.y;
       
       // Calculate distance and angle to opponent
       const distance = Math.sqrt(relativeX * relativeX + relativeY * relativeY);
@@ -143,13 +151,7 @@ export class GameState {
    */
   getDistanceToOpponent() {
     try {
-      const playerPos = this.playerPosition.dataSync();
-      const opponentPos = this.opponentPosition.dataSync();
-      
-      const dx = opponentPos[0] - playerPos[0];
-      const dy = opponentPos[1] - playerPos[1];
-      
-      return Math.sqrt(dx * dx + dy * dy);
+      return this.playerPosition.distance(this.opponentPosition);
     } catch (error) {
       console.error('Failed to calculate distance:', error);
       return 0;
@@ -162,11 +164,8 @@ export class GameState {
    */
   getAngleToOpponent() {
     try {
-      const playerPos = this.playerPosition.dataSync();
-      const opponentPos = this.opponentPosition.dataSync();
-      
-      const dx = opponentPos[0] - playerPos[0];
-      const dy = opponentPos[1] - playerPos[1];
+      const dx = this.opponentPosition.x - this.playerPosition.x;
+      const dy = this.opponentPosition.y - this.playerPosition.y;
       
       return Math.atan2(dy, dx);
     } catch (error) {
@@ -191,8 +190,8 @@ export class GameState {
    */
   toObject() {
     return {
-      playerPosition: this.playerPosition.dataSync(),
-      opponentPosition: this.opponentPosition.dataSync(),
+      playerPosition: [this.playerPosition.x, this.playerPosition.y],
+      opponentPosition: [this.opponentPosition.x, this.opponentPosition.y],
       playerSaberAngle: this.playerSaberAngle,
       playerSaberAngularVelocity: this.playerSaberAngularVelocity,
       opponentSaberAngle: this.opponentSaberAngle,
@@ -208,8 +207,8 @@ export class GameState {
    */
   static fromObject(data) {
     return new GameState({
-      playerPosition: tf.tensor(data.playerPosition),
-      opponentPosition: tf.tensor(data.opponentPosition),
+      playerPosition: Array.isArray(data.playerPosition) ? data.playerPosition : [0, 0],
+      opponentPosition: Array.isArray(data.opponentPosition) ? data.opponentPosition : [0, 0],
       playerSaberAngle: data.playerSaberAngle,
       playerSaberAngularVelocity: data.playerSaberAngularVelocity,
       opponentSaberAngle: data.opponentSaberAngle,
@@ -228,26 +227,21 @@ export class GameState {
    */
   static fromGameEntities(player, opponent, playerSaber, opponentSaber) {
     return new GameState({
-      playerPosition: player.position.clone(),
-      opponentPosition: opponent.position.clone(),
-      playerSaberAngle: playerSaber.angle,
-      playerSaberAngularVelocity: playerSaber.angularVelocity,
-      opponentSaberAngle: opponentSaber.angle,
-      opponentSaberAngularVelocity: opponentSaber.angularVelocity,
+      playerPosition: player.getPosition(),
+      opponentPosition: opponent.getPosition(),
+      playerSaberAngle: playerSaber.getAngle(),
+      playerSaberAngularVelocity: playerSaber.getRotationSpeed(), // Use rotationSpeed as angular velocity
+      opponentSaberAngle: opponentSaber.getAngle(),
+      opponentSaberAngularVelocity: opponentSaber.getRotationSpeed(),
       timestamp: Date.now()
     });
   }
 
   /**
-   * Dispose of tensors to free memory
+   * Dispose of resources (Vector2 doesn't need disposal)
    */
   dispose() {
-    if (this.playerPosition) {
-      this.playerPosition.dispose();
-    }
-    if (this.opponentPosition) {
-      this.opponentPosition.dispose();
-    }
+    // Vector2 doesn't need disposal
   }
 
   /**

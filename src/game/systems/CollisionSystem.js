@@ -3,8 +3,8 @@
  * Manages saber-to-player collisions, boundary collisions, and game outcomes
  */
 
-// TensorFlow.js is loaded from CDN as a global 'tf' object
 import { GameConfig } from '../../config/config.js';
+import { Vector2 } from '../../utils/Vector2.js';
 
 export class CollisionSystem {
   /**
@@ -99,14 +99,10 @@ export class CollisionSystem {
     const saberEndpoints = attacker.saber.getEndpoints(attackerPos);
     
     // Check if saber line segment intersects with victim circle
-    const basePos = saberEndpoints.base.dataSync();
-    const tipPos = saberEndpoints.tip.dataSync();
-    const victimPosData = victimPos.dataSync();
-    
     const intersects = this.lineCircleIntersection(
-      basePos[0], basePos[1],
-      tipPos[0], tipPos[1],
-      victimPosData[0], victimPosData[1],
+      saberEndpoints.base.x, saberEndpoints.base.y,
+      saberEndpoints.tip.x, saberEndpoints.tip.y,
+      victimPos.x, victimPos.y,
       victimRadius + this.saberCollisionTolerance
     );
     
@@ -116,10 +112,8 @@ export class CollisionSystem {
         saberEndpoints.base, saberEndpoints.tip, victimPos
       );
       
-      // Calculate distance using TensorFlow.js
-      const distance = tf.norm(collisionPoint.sub(victimPos));
-      const distanceValue = distance.dataSync()[0];
-      distance.dispose();
+      // Calculate distance
+      const distanceValue = collisionPoint.distance(victimPos);
       
       return {
         point: collisionPoint,
@@ -132,22 +126,18 @@ export class CollisionSystem {
 
   /**
    * Calculate the collision point between a line and a circle
-   * @param {tf.Tensor} lineStart - Line start point
-   * @param {tf.Tensor} lineEnd - Line end point
-   * @param {tf.Tensor} circleCenter - Circle center
-   * @returns {tf.Tensor} Collision point
+   * @param {Vector2} lineStart - Line start point
+   * @param {Vector2} lineEnd - Line end point
+   * @param {Vector2} circleCenter - Circle center
+   * @returns {Vector2} Collision point
    */
   calculateLineCircleCollisionPoint(lineStart, lineEnd, circleCenter) {
-    const start = lineStart.dataSync();
-    const end = lineEnd.dataSync();
-    const center = circleCenter.dataSync();
-    
-    const dx = end[0] - start[0];
-    const dy = end[1] - start[1];
+    const dx = lineEnd.x - lineStart.x;
+    const dy = lineEnd.y - lineStart.y;
     
     // Vector from line start to circle center
-    const fx = center[0] - start[0];
-    const fy = center[1] - start[1];
+    const fx = circleCenter.x - lineStart.x;
+    const fy = circleCenter.y - lineStart.y;
     
     // Project circle center onto line
     const lineLengthSquared = dx * dx + dy * dy;
@@ -158,7 +148,7 @@ export class CollisionSystem {
     const t = Math.max(0, Math.min(1, (fx * dx + fy * dy) / lineLengthSquared));
     
     // Find closest point on line to circle center
-    return tf.tensor2d([[start[0] + t * dx, start[1] + t * dy]]);
+    return new Vector2(lineStart.x + t * dx, lineStart.y + t * dy);
   }
 
   /**
@@ -179,7 +169,7 @@ export class CollisionSystem {
       const radius = entity.getRadius();
       
       // Check if entity is outside arena bounds
-      if (!this.arena.isPositionValidTensor(position, radius)) {
+      if (!this.arena.isPositionValidVector(position, radius)) {
         results.boundaryCollisions.push({
           entity: entity,
           position: position.clone(),
@@ -187,7 +177,7 @@ export class CollisionSystem {
         });
         
         // Constrain entity to bounds
-        const constrainedPos = this.arena.constrainPositionTensor(position, radius);
+        const constrainedPos = this.arena.constrainPositionVector(position, radius);
         entity.setPosition(constrainedPos);
       }
     }
@@ -229,64 +219,52 @@ export class CollisionSystem {
 
   /**
    * Check if two circles are colliding
-   * @param {tf.Tensor} pos1 - First circle position
+   * @param {Vector2} pos1 - First circle position
    * @param {number} radius1 - First circle radius
-   * @param {tf.Tensor} pos2 - Second circle position
+   * @param {Vector2} pos2 - Second circle position
    * @param {number} radius2 - Second circle radius
    * @returns {boolean} True if circles are colliding
    */
   areCirclesColliding(pos1, radius1, pos2, radius2) {
-    const p1 = pos1.dataSync();
-    const p2 = pos2.dataSync();
-    const dx = p2[0] - p1[0];
-    const dy = p2[1] - p1[1];
-    const dist = Math.sqrt(dx * dx + dy * dy);
+    const dist = pos1.distance(pos2);
     return dist <= (radius1 + radius2);
   }
 
   /**
    * Check if a point is inside a circle
-   * @param {tf.Tensor} point - Point to check
-   * @param {tf.Tensor} circleCenter - Circle center
+   * @param {Vector2} point - Point to check
+   * @param {Vector2} circleCenter - Circle center
    * @param {number} radius - Circle radius
    * @returns {boolean} True if point is inside circle
    */
   isPointInCircle(point, circleCenter, radius) {
-    const distance = tf.norm(point.sub(circleCenter));
-    const result = distance.dataSync()[0] <= radius;
-    distance.dispose();
-    return result;
+    return point.distance(circleCenter) <= radius;
   }
 
   /**
    * Check if a line segment intersects with a circle
-   * @param {tf.Tensor} lineStart - Line start point
-   * @param {tf.Tensor} lineEnd - Line end point
-   * @param {tf.Tensor} circleCenter - Circle center
+   * @param {Vector2} lineStart - Line start point
+   * @param {Vector2} lineEnd - Line end point
+   * @param {Vector2} circleCenter - Circle center
    * @param {number} radius - Circle radius
    * @returns {boolean} True if line intersects circle
    */
   doesLineIntersectCircle(lineStart, lineEnd, circleCenter, radius) {
-    const start = lineStart.dataSync();
-    const end = lineEnd.dataSync();
-    const center = circleCenter.dataSync();
-    
-    const dx = center[0] - start[0];
-    const dy = center[1] - start[1];
-    const lx = end[0] - start[0];
-    const ly = end[1] - start[1];
+    const dx = circleCenter.x - lineStart.x;
+    const dy = circleCenter.y - lineStart.y;
+    const lx = lineEnd.x - lineStart.x;
+    const ly = lineEnd.y - lineStart.y;
     
     const lineLengthSquared = lx * lx + ly * ly;
     if (lineLengthSquared === 0) {
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      return dist <= radius;
+      return Math.sqrt(dx * dx + dy * dy) <= radius;
     }
     
     const t = Math.max(0, Math.min(1, (dx * lx + dy * ly) / lineLengthSquared));
-    const closestX = start[0] + t * lx;
-    const closestY = start[1] + t * ly;
+    const closestX = lineStart.x + t * lx;
+    const closestY = lineStart.y + t * ly;
     
-    const dist = Math.sqrt((closestX - center[0]) ** 2 + (closestY - center[1]) ** 2);
+    const dist = Math.sqrt((closestX - circleCenter.x) ** 2 + (closestY - circleCenter.y) ** 2);
     return dist <= radius;
   }
 

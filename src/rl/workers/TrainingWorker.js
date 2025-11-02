@@ -6,6 +6,42 @@
 // Import TensorFlow.js
 importScripts('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js');
 
+// Import Vector2 utility
+// Note: In a real implementation, Vector2 should be bundled or loaded via importScripts
+// For now, we'll define a minimal Vector2 class inline for the worker
+class Vector2 {
+  constructor(x = 0, y = 0) {
+    this.x = x;
+    this.y = y;
+  }
+
+  add(vector) {
+    this.x += vector.x;
+    this.y += vector.y;
+    return this;
+  }
+
+  multiplyScalar(scalar) {
+    this.x *= scalar;
+    this.y *= scalar;
+    return this;
+  }
+
+  clone() {
+    return new Vector2(this.x, this.y);
+  }
+
+  distance(vector) {
+    const dx = this.x - vector.x;
+    const dy = this.y - vector.y;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  toArray() {
+    return [this.x, this.y];
+  }
+}
+
 // Simple TensorFlow.js operations for the worker
 const tf = self.tf;
 
@@ -201,8 +237,8 @@ class TrainingWorker {
    * @returns {Object} Headless player
    */
   createPlayer() {
-    const position = tf.tensor2d([[8, 8]]); // Center of arena
-    const velocity = tf.tensor2d([[0, 0]]);
+    const position = new Vector2(8, 8); // Center of arena
+    const velocity = new Vector2(0, 0);
     
     return {
       position,
@@ -220,9 +256,7 @@ class TrainingWorker {
         const moveVector = this.convertDecisionToMovement(decision);
         
         // Update position
-        const newPosition = this.position.add(moveVector.mul(speed * deltaTime));
-        this.position.dispose();
-        this.position = newPosition;
+        this.position.add(moveVector.clone().multiplyScalar(speed * deltaTime));
         
         // Update saber
         this.saber.update(deltaTime);
@@ -239,7 +273,7 @@ class TrainingWorker {
           case 'D': moveX = 1; break;
         }
         
-        return tf.tensor2d([[moveX, moveY]]);
+        return new Vector2(moveX, moveY);
       },
       
       getPosition() {
@@ -251,8 +285,7 @@ class TrainingWorker {
       },
       
       dispose() {
-        this.position.dispose();
-        this.velocity.dispose();
+        // Vector2 doesn't need disposal
         this.saber.dispose();
       }
     };
@@ -263,8 +296,8 @@ class TrainingWorker {
    * @returns {Object} Headless AI
    */
   createAI() {
-    const position = tf.tensor2d([[8, 8]]); // Center of arena
-    const velocity = tf.tensor2d([[0, 0]]);
+    const position = new Vector2(8, 8); // Center of arena
+    const velocity = new Vector2(0, 0);
     
     return {
       position,
@@ -285,9 +318,7 @@ class TrainingWorker {
         const moveX = Math.cos(this.direction) * speed * deltaTime;
         const moveY = Math.sin(this.direction) * speed * deltaTime;
         
-        const newPosition = this.position.add(tf.tensor2d([[moveX, moveY]]));
-        this.position.dispose();
-        this.position = newPosition;
+        this.position.add(new Vector2(moveX, moveY));
         
         // Update saber
         this.saber.update(deltaTime);
@@ -302,8 +333,7 @@ class TrainingWorker {
       },
       
       dispose() {
-        this.position.dispose();
-        this.velocity.dispose();
+        // Vector2 doesn't need disposal
         this.saber.dispose();
       }
     };
@@ -328,9 +358,16 @@ class TrainingWorker {
       },
       
       getEndPosition(playerPosition) {
-        const endX = playerPosition.dataSync()[0] + Math.cos(this.angle) * this.length;
-        const endY = playerPosition.dataSync()[1] + Math.sin(this.angle) * this.length;
-        return tf.tensor2d([[endX, endY]]);
+        const pos = playerPosition instanceof Vector2 
+          ? playerPosition 
+          : new Vector2(playerPosition.x || 0, playerPosition.y || 0);
+        const endX = pos.x + Math.cos(this.angle) * this.length;
+        const endY = pos.y + Math.sin(this.angle) * this.length;
+        return new Vector2(endX, endY);
+      },
+      
+      getRotationSpeed() {
+        return this.angularVelocity;
       },
       
       dispose() {
@@ -349,9 +386,12 @@ class TrainingWorker {
       height: this.gameConfig.arena.height,
       
       constrainPosition(position) {
-        const x = Math.max(1, Math.min(this.width - 1, position.dataSync()[0]));
-        const y = Math.max(1, Math.min(this.height - 1, position.dataSync()[1]));
-        return tf.tensor2d([[x, y]]);
+        const pos = position instanceof Vector2 
+          ? position 
+          : new Vector2(position.x || 0, position.y || 0);
+        const x = Math.max(1, Math.min(this.width - 1, pos.x));
+        const y = Math.max(1, Math.min(this.height - 1, pos.y));
+        return new Vector2(x, y);
       }
     };
   }
@@ -359,17 +399,17 @@ class TrainingWorker {
   /**
    * Check if saber hits target
    * @param {Object} saber - Saber object
-   * @param {tf.Tensor} targetPosition - Target position
+   * @param {Vector2} targetPosition - Target position
    * @returns {boolean} True if hit
    */
   checkSaberHit(saber, targetPosition) {
     // Simple distance check (in real implementation, would check line-circle intersection)
-    const saberEnd = saber.getEndPosition(tf.tensor2d([[0, 0]])); // Simplified
-    const distance = tf.norm(saberEnd.sub(targetPosition));
-    const hit = distance.dataSync()[0] < 1.0; // Player radius
-    
-    saberEnd.dispose();
-    distance.dispose();
+    const saberEnd = saber.getEndPosition(new Vector2(0, 0)); // Simplified
+    const targetPos = targetPosition instanceof Vector2 
+      ? targetPosition 
+      : new Vector2(targetPosition.x || 0, targetPosition.y || 0);
+    const distance = saberEnd.distance(targetPos);
+    const hit = distance < 1.0; // Player radius
     
     return hit;
   }
@@ -381,13 +421,15 @@ class TrainingWorker {
    */
   getGameResult(game) {
     const gameLength = (Date.now() - game.startTime) / 1000;
+    const playerPos = game.player.getPosition();
+    const aiPos = game.ai.getPosition();
     
     return {
       winner: game.winner || 'timeout',
       gameLength,
       metrics: {
-        playerPosition: game.player.getPosition().dataSync(),
-        aiPosition: game.ai.getPosition().dataSync()
+        playerPosition: playerPos instanceof Vector2 ? playerPos.toArray() : [playerPos.x || 0, playerPos.y || 0],
+        aiPosition: aiPos instanceof Vector2 ? aiPos.toArray() : [aiPos.x || 0, aiPos.y || 0]
       }
     };
   }

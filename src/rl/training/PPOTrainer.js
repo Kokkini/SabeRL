@@ -135,47 +135,9 @@ export class PPOTrainer {
       } else if (state && typeof state === 'object' && state.playerPosition) {
         // If it's a raw game state object, process it
         try {
-          // Create a safe copy of the state to avoid tensor disposal issues
-          let playerPos, opponentPos;
-          
-          try {
-            // Try to clone tensors if they exist and aren't disposed
-            if (state.playerPosition && !state.playerPosition.isDisposed) {
-              playerPos = state.playerPosition.clone();
-            } else {
-              // Fallback to default position
-              playerPos = tf.tensor2d([[8, 8]]);
-            }
-          } catch (e) {
-            playerPos = tf.tensor2d([[8, 8]]);
-          }
-          
-          try {
-            if (state.opponentPosition && !state.opponentPosition.isDisposed) {
-              opponentPos = state.opponentPosition.clone();
-            } else {
-              opponentPos = tf.tensor2d([[12, 12]]);
-            }
-          } catch (e) {
-            opponentPos = tf.tensor2d([[12, 12]]);
-          }
-          
-          const stateCopy = {
-            playerPosition: playerPos,
-            opponentPosition: opponentPos,
-            playerSaberAngle: state.playerSaberAngle || 0,
-            playerSaberAngularVelocity: state.playerSaberAngularVelocity || 0,
-            opponentSaberAngle: state.opponentSaberAngle || 0,
-            opponentSaberAngularVelocity: state.opponentSaberAngularVelocity || 0,
-            timestamp: state.timestamp || Date.now()
-          };
-          
-          const result = this.stateProcessor.processState(stateCopy);
-          
-          // Clean up cloned tensors
-          playerPos.dispose();
-          opponentPos.dispose();
-          
+          // Vector2 objects don't need cloning or disposal - they're plain JS objects
+          // Just pass the state directly to the processor
+          const result = this.stateProcessor.processState(state);
           return result;
         } catch (error) {
           console.warn('PPO: Error processing game state:', error);

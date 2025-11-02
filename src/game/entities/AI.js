@@ -3,26 +3,26 @@
  * Represents the AI opponent in the arena combat game
  */
 
-// TensorFlow.js is loaded from CDN as a global 'tf' object
 import { Saber } from './Saber.js';
 import { GameConfig } from '../../config/config.js';
+import { Vector2 } from '../../utils/Vector2.js';
 
 export class AI {
   /**
    * Create a new AI
    * @param {string} id - Unique identifier
-   * @param {tf.Tensor} position - Initial position
+   * @param {Vector2} position - Initial position
    */
   constructor(id, position) {
     this.id = id;
-    this.position = position || tf.tensor2d([[0, 0]]);
-    this.velocity = tf.tensor2d([[0, 0]]);
+    this.position = position || new Vector2(0, 0);
+    this.velocity = new Vector2(0, 0);
     this.radius = GameConfig.ai.radius;
     this.color = GameConfig.ai.color;
     this.isAlive = true;
     
     // AI-specific properties
-    this.direction = tf.tensor2d([[1, 0]]); // Initial direction
+    this.direction = new Vector2(1, 0); // Initial direction
     this.lastDirectionChange = Date.now();
     this.directionChangeInterval = this.getRandomDirectionChangeInterval();
     
@@ -48,10 +48,10 @@ export class AI {
     const movementVector = this.direction.clone();
     
     // Update velocity
-    this.velocity = movementVector.mul(this.movementSpeed);
+    this.velocity = movementVector.clone().multiplyScalar(this.movementSpeed);
     
     // Update position
-    this.position = this.position.add(this.velocity.mul(deltaTime));
+    this.position.add(this.velocity.clone().multiplyScalar(deltaTime));
     
     // Update saber
     this.saber.update(deltaTime);
@@ -81,8 +81,7 @@ export class AI {
   changeDirection() {
     // Generate random direction
     const angle = Math.random() * 2 * Math.PI;
-    this.direction.dispose();
-    this.direction = tf.tensor2d([[Math.cos(angle), Math.sin(angle)]]);
+    this.direction = new Vector2(Math.cos(angle), Math.sin(angle));
   }
 
   /**
@@ -97,7 +96,7 @@ export class AI {
 
   /**
    * Get current position
-   * @returns {tf.Tensor} Current position
+   * @returns {Vector2} Current position
    */
   getPosition() {
     return this.position.clone();
@@ -105,16 +104,15 @@ export class AI {
 
   /**
    * Set position
-   * @param {tf.Tensor} position - New position
+   * @param {Vector2} position - New position
    */
   setPosition(position) {
-    this.position.dispose();
     this.position = position.clone();
   }
 
   /**
    * Get current velocity
-   * @returns {tf.Tensor} Current velocity
+   * @returns {Vector2} Current velocity
    */
   getVelocity() {
     return this.velocity.clone();
@@ -122,10 +120,9 @@ export class AI {
 
   /**
    * Set velocity
-   * @param {tf.Tensor} velocity - New velocity
+   * @param {Vector2} velocity - New velocity
    */
   setVelocity(velocity) {
-    this.velocity.dispose();
     this.velocity = velocity.clone();
   }
 
@@ -150,21 +147,18 @@ export class AI {
    */
   kill() {
     this.isAlive = false;
-    this.velocity.dispose();
-    this.velocity = tf.tensor2d([[0, 0]]);
+    this.velocity = new Vector2(0, 0);
     this.saber.setActive(false);
   }
 
   /**
    * Resurrect the AI
-   * @param {tf.Tensor} position - New position
+   * @param {Vector2} position - New position
    */
   resurrect(position) {
     this.isAlive = true;
-    this.position.dispose();
     this.position = position.clone();
-    this.velocity.dispose();
-    this.velocity = tf.tensor2d([[0, 0]]);
+    this.velocity = new Vector2(0, 0);
     this.saber.setActive(true);
     this.saber.setAngle(0); // Reset saber angle
     
@@ -194,15 +188,12 @@ export class AI {
    * @returns {boolean} True if moving
    */
   isMoving() {
-    const magnitude = tf.norm(this.velocity);
-    const result = magnitude.dataSync()[0] > 0;
-    magnitude.dispose();
-    return result;
+    return this.velocity.length() > 0;
   }
 
   /**
    * Get movement direction
-   * @returns {tf.Tensor} Normalized movement direction
+   * @returns {Vector2} Normalized movement direction
    */
   getMovementDirection() {
     return this.direction.clone();
@@ -210,7 +201,7 @@ export class AI {
 
   /**
    * Get saber tip position
-   * @returns {tf.Tensor} Saber tip position
+   * @returns {Vector2} Saber tip position
    */
   getSaberTipPosition() {
     return this.saber.getTipPosition(this.position);
@@ -221,30 +212,28 @@ export class AI {
    * @returns {Object} Bounding box {minX, maxX, minY, maxY}
    */
   getBounds() {
-    const pos = this.position.dataSync();
     return {
-      minX: pos[0] - this.radius,
-      maxX: pos[0] + this.radius,
-      minY: pos[1] - this.radius,
-      maxY: pos[1] + this.radius
+      minX: this.position.x - this.radius,
+      maxX: this.position.x + this.radius,
+      minY: this.position.y - this.radius,
+      maxY: this.position.y + this.radius
     };
   }
 
   /**
    * Check if position is valid (within arena bounds)
-   * @param {tf.Tensor} position - Position to check
+   * @param {Vector2} position - Position to check
    * @param {Object} arena - Arena object with bounds
    * @returns {boolean} True if position is valid
    */
   isValidPosition(position, arena) {
     if (!arena || !arena.bounds) return true;
     
-    const pos = position.dataSync();
     const bounds = arena.bounds;
-    return pos[0] >= bounds.minX + this.radius &&
-           pos[0] <= bounds.maxX - this.radius &&
-           pos[1] >= bounds.minY + this.radius &&
-           pos[1] <= bounds.maxY - this.radius;
+    return position.x >= bounds.minX + this.radius &&
+           position.x <= bounds.maxX - this.radius &&
+           position.y >= bounds.minY + this.radius &&
+           position.y <= bounds.maxY - this.radius;
   }
 
   /**
@@ -254,15 +243,13 @@ export class AI {
   constrainToBounds(arena) {
     if (!arena || !arena.bounds) return;
     
-    const pos = this.position.dataSync();
     const bounds = arena.bounds;
     const newX = Math.max(bounds.minX + this.radius, 
-                 Math.min(bounds.maxX - this.radius, pos[0]));
+                 Math.min(bounds.maxX - this.radius, this.position.x));
     const newY = Math.max(bounds.minY + this.radius, 
-                 Math.min(bounds.maxY - this.radius, pos[1]));
+                 Math.min(bounds.maxY - this.radius, this.position.y));
     
-    this.position.dispose();
-    this.position = tf.tensor2d([[newX, newY]]);
+    this.position = new Vector2(newX, newY);
   }
 
   /**
@@ -270,16 +257,13 @@ export class AI {
    * @returns {Object} AI state
    */
   getState() {
-    const pos = this.position.dataSync();
-    const vel = this.velocity.dataSync();
-    const dir = this.direction.dataSync();
     return {
       id: this.id,
-      position: { x: pos[0], y: pos[1] },
-      velocity: { x: vel[0], y: vel[1] },
+      position: { x: this.position.x, y: this.position.y },
+      velocity: { x: this.velocity.x, y: this.velocity.y },
       isAlive: this.isAlive,
       saber: this.saber.getState(),
-      direction: { x: dir[0], y: dir[1] },
+      direction: { x: this.direction.x, y: this.direction.y },
       lastDirectionChange: this.lastDirectionChange,
       directionChangeInterval: this.directionChangeInterval
     };
@@ -291,14 +275,11 @@ export class AI {
    */
   setState(state) {
     this.id = state.id;
-    this.position.dispose();
-    this.position = tf.tensor2d([[state.position.x, state.position.y]]);
-    this.velocity.dispose();
-    this.velocity = tf.tensor2d([[state.velocity.x, state.velocity.y]]);
+    this.position = new Vector2(state.position.x, state.position.y);
+    this.velocity = new Vector2(state.velocity.x, state.velocity.y);
     this.isAlive = state.isAlive;
     this.saber.setState(state.saber);
-    this.direction.dispose();
-    this.direction = tf.tensor2d([[state.direction.x, state.direction.y]]);
+    this.direction = new Vector2(state.direction.x, state.direction.y);
     this.lastDirectionChange = state.lastDirectionChange;
     this.directionChangeInterval = state.directionChangeInterval;
   }
@@ -308,16 +289,13 @@ export class AI {
    * @returns {string} String representation
    */
   toString() {
-    const pos = this.position.dataSync();
-    return `AI(${this.id}, pos: (${pos[0].toFixed(2)}, ${pos[1].toFixed(2)}), alive: ${this.isAlive})`;
+    return `AI(${this.id}, pos: (${this.position.x.toFixed(2)}, ${this.position.y.toFixed(2)}), alive: ${this.isAlive})`;
   }
 
   /**
    * Dispose of resources
    */
   dispose() {
-    this.position.dispose();
-    this.velocity.dispose();
-    this.direction.dispose();
+    // Vector2 doesn't need disposal
   }
 }

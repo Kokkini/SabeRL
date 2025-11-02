@@ -4,22 +4,22 @@
  * Now supports both human and AI control modes
  */
 
-// TensorFlow.js is loaded from CDN as a global 'tf' object
 import { Saber } from './Saber.js';
 import { GameConfig } from '../../config/config.js';
 import { PolicyAgent } from '../../rl/agents/PolicyAgent.js';
 import { GameState } from '../../rl/entities/GameState.js';
+import { Vector2 } from '../../utils/Vector2.js';
 
 export class Player {
   /**
    * Create a new Player
    * @param {string} id - Unique identifier
-   * @param {tf.Tensor} position - Initial position
+   * @param {Vector2} position - Initial position
    */
   constructor(id, position) {
     this.id = id;
-    this.position = position || tf.tensor2d([[0, 0]]);
-    this.velocity = tf.tensor2d([[0, 0]]);
+    this.position = position || new Vector2(0, 0);
+    this.velocity = new Vector2(0, 0);
     this.radius = GameConfig.player.radius;
     this.color = GameConfig.player.color;
     this.isAlive = true;
@@ -78,10 +78,10 @@ export class Player {
     const movementVector = this.calculateMovementVector();
     
     // Update velocity
-    this.velocity = movementVector.mul(this.movementSpeed);
+    this.velocity = movementVector.clone().multiplyScalar(this.movementSpeed);
     
     // Update position
-    this.position = this.position.add(this.velocity.mul(deltaTime));
+    this.position.add(this.velocity.clone().multiplyScalar(deltaTime));
   }
 
   /**
@@ -104,10 +104,10 @@ export class Player {
     const movementVector = this.calculateMovementVector();
     
     // Update velocity
-    this.velocity = movementVector.mul(this.movementSpeed);
+    this.velocity = movementVector.clone().multiplyScalar(this.movementSpeed);
     
     // Update position
-    this.position = this.position.add(this.velocity.mul(deltaTime));
+    this.position.add(this.velocity.clone().multiplyScalar(deltaTime));
   }
 
   /**
@@ -183,12 +183,12 @@ export class Player {
     
     // Calculate movement vector and update velocity
     const movementVector = this.calculateMovementVector();
-    this.velocity = movementVector.mul(this.movementSpeed);
+    this.velocity = movementVector.clone().multiplyScalar(this.movementSpeed);
   }
 
   /**
    * Calculate movement vector from input state
-   * @returns {tf.Tensor} Normalized movement vector
+   * @returns {Vector2} Normalized movement vector
    */
   calculateMovementVector() {
     let x = 0;
@@ -199,20 +199,19 @@ export class Player {
     if (this.inputState.left) x -= 1;
     if (this.inputState.right) x += 1;
     
-    const movementVector = tf.tensor2d([[x, y]]);
+    const movementVector = new Vector2(x, y);
     
     // Normalize diagonal movement
-    const magnitude = tf.norm(movementVector);
-    if (magnitude.dataSync()[0] > 0) {
-      return movementVector.div(magnitude);
+    if (movementVector.length() > 0) {
+      return movementVector.clone().normalize();
     }
     
-    return tf.tensor2d([[0, 0]]);
+    return new Vector2(0, 0);
   }
 
   /**
    * Get current position
-   * @returns {tf.Tensor} Current position
+   * @returns {Vector2} Current position
    */
   getPosition() {
     return this.position.clone();
@@ -220,16 +219,15 @@ export class Player {
 
   /**
    * Set position
-   * @param {tf.Tensor} position - New position
+   * @param {Vector2} position - New position
    */
   setPosition(position) {
-    this.position.dispose();
     this.position = position.clone();
   }
 
   /**
    * Get current velocity
-   * @returns {tf.Tensor} Current velocity
+   * @returns {Vector2} Current velocity
    */
   getVelocity() {
     return this.velocity.clone();
@@ -237,10 +235,9 @@ export class Player {
 
   /**
    * Set velocity
-   * @param {tf.Tensor} velocity - New velocity
+   * @param {Vector2} velocity - New velocity
    */
   setVelocity(velocity) {
-    this.velocity.dispose();
     this.velocity = velocity.clone();
   }
 
@@ -265,21 +262,18 @@ export class Player {
    */
   kill() {
     this.isAlive = false;
-    this.velocity.dispose();
-    this.velocity = tf.tensor2d([[0, 0]]);
+    this.velocity = new Vector2(0, 0);
     this.saber.setActive(false);
   }
 
   /**
    * Resurrect the player
-   * @param {tf.Tensor} position - New position
+   * @param {Vector2} position - New position
    */
   resurrect(position) {
     this.isAlive = true;
-    this.position.dispose();
     this.position = position.clone();
-    this.velocity.dispose();
-    this.velocity = tf.tensor2d([[0, 0]]);
+    this.velocity = new Vector2(0, 0);
     this.saber.setActive(true);
     this.saber.setAngle(0); // Reset saber angle
   }
@@ -305,30 +299,23 @@ export class Player {
    * @returns {boolean} True if moving
    */
   isMoving() {
-    const magnitude = tf.norm(this.velocity);
-    const result = magnitude.dataSync()[0] > 0;
-    magnitude.dispose();
-    return result;
+    return this.velocity.length() > 0;
   }
 
   /**
    * Get movement direction
-   * @returns {tf.Tensor} Normalized movement direction
+   * @returns {Vector2} Normalized movement direction
    */
   getMovementDirection() {
-    const magnitude = tf.norm(this.velocity);
-    if (magnitude.dataSync()[0] > 0) {
-      const normalized = this.velocity.div(magnitude);
-      magnitude.dispose();
-      return normalized;
+    if (this.velocity.length() > 0) {
+      return this.velocity.clone().normalize();
     }
-    magnitude.dispose();
-    return tf.tensor2d([[0, 0]]);
+    return new Vector2(0, 0);
   }
 
   /**
    * Get saber tip position
-   * @returns {tf.Tensor} Saber tip position
+   * @returns {Vector2} Saber tip position
    */
   getSaberTipPosition() {
     return this.saber.getTipPosition(this.position);
@@ -339,30 +326,28 @@ export class Player {
    * @returns {Object} Bounding box {minX, maxX, minY, maxY}
    */
   getBounds() {
-    const pos = this.position.dataSync();
     return {
-      minX: pos[0] - this.radius,
-      maxX: pos[0] + this.radius,
-      minY: pos[1] - this.radius,
-      maxY: pos[1] + this.radius
+      minX: this.position.x - this.radius,
+      maxX: this.position.x + this.radius,
+      minY: this.position.y - this.radius,
+      maxY: this.position.y + this.radius
     };
   }
 
   /**
    * Check if position is valid (within arena bounds)
-   * @param {tf.Tensor} position - Position to check
+   * @param {Vector2} position - Position to check
    * @param {Object} arena - Arena object with bounds
    * @returns {boolean} True if position is valid
    */
   isValidPosition(position, arena) {
     if (!arena || !arena.bounds) return true;
     
-    const pos = position.dataSync();
     const bounds = arena.bounds;
-    return pos[0] >= bounds.minX + this.radius &&
-           pos[0] <= bounds.maxX - this.radius &&
-           pos[1] >= bounds.minY + this.radius &&
-           pos[1] <= bounds.maxY - this.radius;
+    return position.x >= bounds.minX + this.radius &&
+           position.x <= bounds.maxX - this.radius &&
+           position.y >= bounds.minY + this.radius &&
+           position.y <= bounds.maxY - this.radius;
   }
 
   /**
@@ -372,15 +357,13 @@ export class Player {
   constrainToBounds(arena) {
     if (!arena || !arena.bounds) return;
     
-    const pos = this.position.dataSync();
     const bounds = arena.bounds;
     const newX = Math.max(bounds.minX + this.radius, 
-                 Math.min(bounds.maxX - this.radius, pos[0]));
+                 Math.min(bounds.maxX - this.radius, this.position.x));
     const newY = Math.max(bounds.minY + this.radius, 
-                 Math.min(bounds.maxY - this.radius, pos[1]));
+                 Math.min(bounds.maxY - this.radius, this.position.y));
     
-    this.position.dispose();
-    this.position = tf.tensor2d([[newX, newY]]);
+    this.position = new Vector2(newX, newY);
   }
 
   /**
@@ -388,12 +371,10 @@ export class Player {
    * @returns {Object} Player state
    */
   getState() {
-    const pos = this.position.dataSync();
-    const vel = this.velocity.dataSync();
     return {
       id: this.id,
-      position: { x: pos[0], y: pos[1] },
-      velocity: { x: vel[0], y: vel[1] },
+      position: { x: this.position.x, y: this.position.y },
+      velocity: { x: this.velocity.x, y: this.velocity.y },
       isAlive: this.isAlive,
       saber: this.saber.getState(),
       inputState: { ...this.inputState }
@@ -406,10 +387,8 @@ export class Player {
    */
   setState(state) {
     this.id = state.id;
-    this.position.dispose();
-    this.position = tf.tensor2d([[state.position.x, state.position.y]]);
-    this.velocity.dispose();
-    this.velocity = tf.tensor2d([[state.velocity.x, state.velocity.y]]);
+    this.position = new Vector2(state.position.x, state.position.y);
+    this.velocity = new Vector2(state.velocity.x, state.velocity.y);
     this.isAlive = state.isAlive;
     this.saber.setState(state.saber);
     this.inputState = { ...state.inputState };
@@ -500,17 +479,14 @@ export class Player {
    * @returns {string} String representation
    */
   toString() {
-    const pos = this.position.dataSync();
-    return `Player(${this.id}, pos: (${pos[0].toFixed(2)}, ${pos[1].toFixed(2)}), alive: ${this.isAlive}, mode: ${this.controlMode})`;
+    return `Player(${this.id}, pos: (${this.position.x.toFixed(2)}, ${this.position.y.toFixed(2)}), alive: ${this.isAlive}, mode: ${this.controlMode})`;
   }
 
   /**
    * Dispose of resources
    */
   dispose() {
-    this.position.dispose();
-    this.velocity.dispose();
-    
+    // Vector2 doesn't need disposal, but policy agent might
     // Only dispose of policy agent if it's not shared
     if (this.policyAgent && !this.isSharedAgent) {
       this.policyAgent.dispose();

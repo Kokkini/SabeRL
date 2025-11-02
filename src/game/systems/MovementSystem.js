@@ -3,8 +3,8 @@
  * Manages position updates, velocity calculations, and boundary constraints
  */
 
-// TensorFlow.js is loaded from CDN as a global 'tf' object
 import { GameConfig } from '../../config/config.js';
+import { Vector2 } from '../../utils/Vector2.js';
 
 export class MovementSystem {
   /**
@@ -30,20 +30,20 @@ export class MovementSystem {
     const movementVector = inputSystem.getMovementVector();
     
     // Calculate velocity
-    const velocity = movementVector.mul(this.movementSpeed);
+    const velocity = movementVector.clone().multiplyScalar(this.movementSpeed);
     
     // Update player velocity
     player.setVelocity(velocity);
     
     // Calculate new position
-    const newPosition = player.getPosition().add(velocity.mul(deltaTime));
+    const newPosition = player.getPosition().clone().add(velocity.clone().multiplyScalar(deltaTime));
     
     // Check arena boundaries
-    if (this.arena && this.arena.isPositionValidTensor(newPosition, player.getRadius())) {
+    if (this.arena && this.arena.isPositionValidVector(newPosition, player.getRadius())) {
       player.setPosition(newPosition);
     } else if (this.arena) {
       // Constrain to arena bounds
-      const constrainedPos = this.arena.constrainPositionTensor(newPosition, player.getRadius());
+      const constrainedPos = this.arena.constrainPositionVector(newPosition, player.getRadius());
       player.setPosition(constrainedPos);
     } else {
       // No arena constraints
@@ -65,20 +65,20 @@ export class MovementSystem {
     this.updateAIDirection(ai, deltaTime);
     
     // Calculate velocity based on current direction
-    const velocity = ai.direction.mul(this.movementSpeed);
+    const velocity = ai.direction.clone().multiplyScalar(this.movementSpeed);
     
     // Update AI velocity
     ai.setVelocity(velocity);
     
     // Calculate new position
-    const newPosition = ai.getPosition().add(velocity.mul(deltaTime));
+    const newPosition = ai.getPosition().clone().add(velocity.clone().multiplyScalar(deltaTime));
     
     // Check arena boundaries
-    if (this.arena && this.arena.isPositionValidTensor(newPosition, ai.getRadius())) {
+    if (this.arena && this.arena.isPositionValidVector(newPosition, ai.getRadius())) {
       ai.setPosition(newPosition);
     } else if (this.arena) {
       // Constrain to arena bounds and change direction
-      const constrainedPos = this.arena.constrainPositionTensor(newPosition, ai.getRadius());
+      const constrainedPos = this.arena.constrainPositionVector(newPosition, ai.getRadius());
       ai.setPosition(constrainedPos);
       
       // Change direction when hitting boundary
@@ -115,8 +115,7 @@ export class MovementSystem {
   changeAIDirection(ai) {
     // Generate random direction
     const angle = Math.random() * 2 * Math.PI;
-    ai.direction.dispose();
-    ai.direction = tf.tensor2d([[Math.cos(angle), Math.sin(angle)]]);
+    ai.direction = new Vector2(Math.cos(angle), Math.sin(angle));
   }
 
   /**
@@ -158,62 +157,55 @@ export class MovementSystem {
 
   /**
    * Check if a position is valid for movement
-   * @param {tf.Tensor} position - Position to check
+   * @param {Vector2} position - Position to check
    * @param {number} radius - Object radius
    * @returns {boolean} True if position is valid
    */
   isValidPosition(position, radius = 0) {
     if (!this.arena) return true;
-    return this.arena.isPositionValidTensor(position, radius);
+    return this.arena.isPositionValidVector(position, radius);
   }
 
   /**
    * Constrain position to valid bounds
-   * @param {tf.Tensor} position - Position to constrain
+   * @param {Vector2} position - Position to constrain
    * @param {number} radius - Object radius
-   * @returns {tf.Tensor} Constrained position
+   * @returns {Vector2} Constrained position
    */
   constrainPosition(position, radius = 0) {
     if (!this.arena) return position.clone();
     
-    return this.arena.constrainPositionTensor(position, radius);
+    return this.arena.constrainPositionVector(position, radius);
   }
 
   /**
    * Calculate distance between two positions
-   * @param {tf.Tensor} pos1 - First position
-   * @param {tf.Tensor} pos2 - Second position
+   * @param {Vector2} pos1 - First position
+   * @param {Vector2} pos2 - Second position
    * @returns {number} Distance between positions
    */
   calculateDistance(pos1, pos2) {
-    const distance = tf.norm(pos1.sub(pos2));
-    const result = distance.dataSync()[0];
-    distance.dispose();
-    return result;
+    return pos1.distance(pos2);
   }
 
   /**
    * Calculate direction from one position to another
-   * @param {tf.Tensor} from - Starting position
-   * @param {tf.Tensor} to - Target position
-   * @returns {tf.Tensor} Normalized direction vector
+   * @param {Vector2} from - Starting position
+   * @param {Vector2} to - Target position
+   * @returns {Vector2} Normalized direction vector
    */
   calculateDirection(from, to) {
-    const direction = to.sub(from);
-    const magnitude = tf.norm(direction);
-    if (magnitude.dataSync()[0] > 0) {
-      const normalized = direction.div(magnitude);
-      magnitude.dispose();
-      return normalized;
+    const direction = to.clone().subtract(from);
+    if (direction.length() > 0) {
+      return direction.normalize();
     }
-    magnitude.dispose();
     return direction;
   }
 
   /**
    * Check if two objects are within a certain distance
-   * @param {tf.Tensor} pos1 - First position
-   * @param {tf.Tensor} pos2 - Second position
+   * @param {Vector2} pos1 - First position
+   * @param {Vector2} pos2 - Second position
    * @param {number} distance - Maximum distance
    * @returns {boolean} True if within distance
    */

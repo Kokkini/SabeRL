@@ -3,8 +3,8 @@
  * Manages keyboard input for player movement and game controls
  */
 
-// TensorFlow.js is loaded from CDN as a global 'tf' object
 import { GameConfig } from '../../config/config.js';
+import { Vector2 } from '../../utils/Vector2.js';
 
 export class InputSystem {
   /**
@@ -23,7 +23,7 @@ export class InputSystem {
     this.keyPressThreshold = 50; // Minimum time between key presses (ms)
     
     // Movement vector cache
-    this.cachedMovementVector = tf.tensor2d([[0, 0]]);
+    this.cachedMovementVector = new Vector2(0, 0);
     this.lastMovementUpdate = 0;
     
     this.setupEventListeners();
@@ -119,7 +119,7 @@ export class InputSystem {
 
   /**
    * Get movement vector based on current key states
-   * @returns {tf.Tensor} Normalized movement vector
+   * @returns {Vector2} Normalized movement vector
    */
   getMovementVector() {
     // Cache movement vector for performance
@@ -138,25 +138,18 @@ export class InputSystem {
     if (this.isKeyPressedByName('right')) x += 1;
     
     // Create movement vector
-    const movementVector = tf.tensor2d([[x, y]]);
+    const movementVector = new Vector2(x, y);
     
     // Normalize diagonal movement
-    const magnitude = tf.norm(movementVector);
-    if (magnitude.dataSync()[0] > 0) {
-      const normalized = movementVector.div(magnitude);
-      movementVector.dispose();
-      magnitude.dispose();
-      this.cachedMovementVector.dispose();
-      this.cachedMovementVector = normalized;
+    if (movementVector.length() > 0) {
+      this.cachedMovementVector = movementVector.clone().normalize();
       this.lastMovementUpdate = currentTime;
-      return normalized;
+      return this.cachedMovementVector;
     }
     
     // Cache the result
-    this.cachedMovementVector.dispose();
     this.cachedMovementVector = movementVector;
     this.lastMovementUpdate = currentTime;
-    magnitude.dispose();
     
     return movementVector;
   }
@@ -208,8 +201,7 @@ export class InputSystem {
    */
   clearKeyStates() {
     this.keyStates.clear();
-    this.cachedMovementVector.dispose();
-    this.cachedMovementVector = tf.tensor2d([[0, 0]]);
+    this.cachedMovementVector = new Vector2(0, 0);
   }
 
   /**

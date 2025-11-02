@@ -3,8 +3,8 @@
  * Represents the arena with boundaries and collision detection
  */
 
-// TensorFlow.js is loaded from CDN as a global 'tf' object
 import { GameConfig } from '../../config/config.js';
+import { Vector2 } from '../../utils/Vector2.js';
 
 export class Arena {
   /**
@@ -83,14 +83,13 @@ export class Arena {
   }
 
   /**
-   * Check if a position is within arena bounds (Tensor version)
-   * @param {tf.Tensor} position - Position tensor
+   * Check if a position is within arena bounds (Vector2 version)
+   * @param {Vector2} position - Position vector
    * @param {number} radius - Optional radius for boundary checking
    * @returns {boolean} True if position is within bounds
    */
-  isPositionValidTensor(position, radius = 0) {
-    const pos = position.dataSync();
-    return this.isPositionValid(pos[0], pos[1], radius);
+  isPositionValidVector(position, radius = 0) {
+    return this.isPositionValid(position.x, position.y, radius);
   }
 
   /**
@@ -110,15 +109,14 @@ export class Arena {
   }
 
   /**
-   * Constrain a position to arena bounds (Tensor version)
-   * @param {tf.Tensor} position - Position tensor
+   * Constrain a position to arena bounds (Vector2 version)
+   * @param {Vector2} position - Position vector
    * @param {number} radius - Optional radius for boundary checking
-   * @returns {tf.Tensor} Constrained position tensor
+   * @returns {Vector2} Constrained position vector
    */
-  constrainPositionTensor(position, radius = 0) {
-    const pos = position.dataSync();
-    const constrained = this.constrainPosition(pos[0], pos[1], radius);
-    return tf.tensor2d([[constrained.x, constrained.y]]);
+  constrainPositionVector(position, radius = 0) {
+    const constrained = this.constrainPosition(position.x, position.y, radius);
+    return new Vector2(constrained.x, constrained.y);
   }
 
   /**
@@ -139,13 +137,12 @@ export class Arena {
   }
 
   /**
-   * Get distance to nearest boundary (Tensor version)
-   * @param {tf.Tensor} position - Position tensor
+   * Get distance to nearest boundary (Vector2 version)
+   * @param {Vector2} position - Position vector
    * @returns {number} Distance to nearest boundary
    */
-  getDistanceToBoundaryTensor(position) {
-    const pos = position.dataSync();
-    return this.getDistanceToBoundary(pos[0], pos[1]);
+  getDistanceToBoundaryVector(position) {
+    return this.getDistanceToBoundary(position.x, position.y);
   }
 
   /**
@@ -160,34 +157,33 @@ export class Arena {
   }
 
   /**
-   * Check if a circle is completely within arena bounds (Tensor version)
-   * @param {tf.Tensor} position - Circle center position
+   * Check if a circle is completely within arena bounds (Vector2 version)
+   * @param {Vector2} position - Circle center position
    * @param {number} radius - Circle radius
    * @returns {boolean} True if circle is completely within bounds
    */
-  isCircleWithinBoundsTensor(position, radius) {
-    const pos = position.dataSync();
-    return this.isCircleWithinBounds(pos[0], pos[1], radius);
+  isCircleWithinBoundsVector(position, radius) {
+    return this.isCircleWithinBounds(position.x, position.y, radius);
   }
 
   /**
    * Get random position within arena bounds
    * @param {number} radius - Optional radius to keep away from boundaries
-   * @returns {tf.Tensor} Random position tensor
+   * @returns {Vector2} Random position vector
    */
   getRandomPosition(radius = 0) {
     const x = Math.random() * (this.bounds.maxX - this.bounds.minX - 2 * radius) + 
               this.bounds.minX + radius;
     const y = Math.random() * (this.bounds.maxY - this.bounds.minY - 2 * radius) + 
               this.bounds.minY + radius;
-    return tf.tensor2d([[x, y]]);
+    return new Vector2(x, y);
   }
 
   /**
    * Get spawn positions for players
    * @param {number} playerCount - Number of players
    * @param {number} playerRadius - Player radius for spacing
-   * @returns {Array} Array of spawn position tensors
+   * @returns {Array} Array of spawn position vectors
    */
   getSpawnPositions(playerCount, playerRadius) {
     const positions = [];
@@ -195,11 +191,11 @@ export class Arena {
     
     if (playerCount === 1) {
       // Single player spawns in center
-      positions.push(tf.tensor2d([[this.center.x, this.center.y]]));
+      positions.push(new Vector2(this.center.x, this.center.y));
     } else if (playerCount === 2) {
       // Two players spawn on opposite sides
-      positions.push(tf.tensor2d([[margin, this.center.y]]));
-      positions.push(tf.tensor2d([[this.bounds.maxX - margin, this.center.y]]));
+      positions.push(new Vector2(margin, this.center.y));
+      positions.push(new Vector2(this.bounds.maxX - margin, this.center.y));
     } else {
       // Multiple players spawn in a circle pattern
       const angleStep = (2 * Math.PI) / playerCount;
@@ -212,7 +208,7 @@ export class Arena {
         
         // Constrain to bounds
         const constrainedPos = this.constrainPosition(x, y, playerRadius);
-        positions.push(tf.tensor2d([[constrainedPos.x, constrainedPos.y]]));
+        positions.push(new Vector2(constrainedPos.x, constrainedPos.y));
       }
     }
     

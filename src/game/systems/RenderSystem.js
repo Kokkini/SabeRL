@@ -3,8 +3,8 @@
  * Manages canvas drawing, entity rendering, and visual effects
  */
 
-// TensorFlow.js is loaded from CDN as a global 'tf' object
 import { GameConfig } from '../../config/config.js';
+import { Vector2 } from '../../utils/Vector2.js';
 
 export class RenderSystem {
   /**
@@ -17,7 +17,7 @@ export class RenderSystem {
     this.context = context;
     this.arena = null;
     this.scale = 1;
-    this.offset = tf.tensor2d([[0, 0]]);
+    this.offset = new Vector2(0, 0);
     this.showFPS = GameConfig.rendering.showFPS;
     this.showDebugInfo = GameConfig.rendering.showDebugInfo;
     
@@ -72,39 +72,34 @@ export class RenderSystem {
     this.scale = Math.min(scaleX, scaleY);
     
     // Calculate offset to center the arena
-    this.offset.dispose();
-    this.offset = tf.tensor2d([[
+    this.offset = new Vector2(
       (canvasWidth - arenaWidth * this.scale) / 2,
       (canvasHeight - arenaHeight * this.scale) / 2
-    ]]);
+    );
   }
 
   /**
    * Convert game coordinates to canvas coordinates
-   * @param {tf.Tensor} gamePos - Position in game coordinates
-   * @returns {tf.Tensor} Position in canvas coordinates
+   * @param {Vector2} gamePos - Position in game coordinates
+   * @returns {Vector2} Position in canvas coordinates
    */
   gameToCanvas(gamePos) {
-    const pos = gamePos.dataSync();
-    const offset = this.offset.dataSync();
-    return tf.tensor2d([[
-      pos[0] * this.scale + offset[0],
-      pos[1] * this.scale + offset[1]
-    ]]);
+    return new Vector2(
+      gamePos.x * this.scale + this.offset.x,
+      gamePos.y * this.scale + this.offset.y
+    );
   }
 
   /**
    * Convert canvas coordinates to game coordinates
-   * @param {tf.Tensor} canvasPos - Position in canvas coordinates
-   * @returns {tf.Tensor} Position in game coordinates
+   * @param {Vector2} canvasPos - Position in canvas coordinates
+   * @returns {Vector2} Position in game coordinates
    */
   canvasToGame(canvasPos) {
-    const pos = canvasPos.dataSync();
-    const offset = this.offset.dataSync();
-    return tf.tensor2d([[
-      (pos[0] - offset[0]) / this.scale,
-      (pos[1] - offset[1]) / this.scale
-    ]]);
+    return new Vector2(
+      (canvasPos.x - this.offset.x) / this.scale,
+      (canvasPos.y - this.offset.y) / this.scale
+    );
   }
 
   /**
@@ -122,29 +117,23 @@ export class RenderSystem {
     if (!this.arena) return;
     
     const bounds = this.arena.getBounds();
-    const topLeft = this.gameToCanvas(tf.tensor2d([[bounds.minX, bounds.minY]]));
-    const bottomRight = this.gameToCanvas(tf.tensor2d([[bounds.maxX, bounds.maxY]]));
-    
-    const tl = topLeft.dataSync();
-    const br = bottomRight.dataSync();
+    const topLeft = this.gameToCanvas(new Vector2(bounds.minX, bounds.minY));
+    const bottomRight = this.gameToCanvas(new Vector2(bounds.maxX, bounds.maxY));
     
     // Draw arena background
     this.context.fillStyle = this.arenaColor;
     this.context.fillRect(
-      tl[0], tl[1],
-      br[0] - tl[0], br[1] - tl[1]
+      topLeft.x, topLeft.y,
+      bottomRight.x - topLeft.x, bottomRight.y - topLeft.y
     );
     
     // Draw arena border
     this.context.strokeStyle = this.borderColor;
     this.context.lineWidth = this.borderWidth;
     this.context.strokeRect(
-      tl[0], tl[1],
-      br[0] - tl[0], br[1] - tl[1]
+      topLeft.x, topLeft.y,
+      bottomRight.x - topLeft.x, bottomRight.y - topLeft.y
     );
-    
-    topLeft.dispose();
-    bottomRight.dispose();
   }
 
   /**
@@ -156,12 +145,11 @@ export class RenderSystem {
     
     const position = this.gameToCanvas(player.getPosition());
     const radius = player.getRadius() * this.scale;
-    const pos = position.dataSync();
     
     // Draw player circle
     this.context.fillStyle = player.getColor();
     this.context.beginPath();
-    this.context.arc(pos[0], pos[1], radius, 0, 2 * Math.PI);
+    this.context.arc(position.x, position.y, radius, 0, 2 * Math.PI);
     this.context.fill();
     
     // Draw player border
@@ -171,8 +159,6 @@ export class RenderSystem {
     
     // Draw player's saber
     this.renderSaber(player.saber, player.getPosition());
-    
-    position.dispose();
   }
 
   /**
@@ -184,12 +170,11 @@ export class RenderSystem {
     
     const position = this.gameToCanvas(ai.getPosition());
     const radius = ai.getRadius() * this.scale;
-    const pos = position.dataSync();
     
     // Draw AI circle
     this.context.fillStyle = ai.getColor();
     this.context.beginPath();
-    this.context.arc(pos[0], pos[1], radius, 0, 2 * Math.PI);
+    this.context.arc(position.x, position.y, radius, 0, 2 * Math.PI);
     this.context.fill();
     
     // Draw AI border
@@ -199,14 +184,12 @@ export class RenderSystem {
     
     // Draw AI's saber
     this.renderSaber(ai.saber, ai.getPosition());
-    
-    position.dispose();
   }
 
   /**
    * Render a saber
    * @param {Object} saber - Saber object to render
-   * @param {tf.Tensor} ownerPosition - Position of the saber owner
+   * @param {Vector2} ownerPosition - Position of the saber owner
    */
   renderSaber(saber, ownerPosition) {
     if (!saber || !saber.isActive()) return;
@@ -214,25 +197,19 @@ export class RenderSystem {
     const basePos = this.gameToCanvas(ownerPosition);
     const tipPos = this.gameToCanvas(saber.getTipPosition(ownerPosition));
     
-    const base = basePos.dataSync();
-    const tip = tipPos.dataSync();
-    
     // Draw saber line
     this.context.strokeStyle = saber.getColor();
     this.context.lineWidth = saber.getWidth();
     this.context.beginPath();
-    this.context.moveTo(base[0], base[1]);
-    this.context.lineTo(tip[0], tip[1]);
+    this.context.moveTo(basePos.x, basePos.y);
+    this.context.lineTo(tipPos.x, tipPos.y);
     this.context.stroke();
     
     // Draw saber tip
     this.context.fillStyle = saber.getColor();
     this.context.beginPath();
-    this.context.arc(tip[0], tip[1], saber.getWidth() / 2, 0, 2 * Math.PI);
+    this.context.arc(tipPos.x, tipPos.y, saber.getWidth() / 2, 0, 2 * Math.PI);
     this.context.fill();
-    
-    basePos.dispose();
-    tipPos.dispose();
   }
 
   /**
@@ -314,8 +291,7 @@ export class RenderSystem {
     y += lineHeight;
     
     // Offset
-    const offsetData = this.offset.dataSync();
-    this.context.fillText(`Offset: (${offsetData[0].toFixed(1)}, ${offsetData[1].toFixed(1)})`, 10, y);
+    this.context.fillText(`Offset: (${this.offset.x.toFixed(1)}, ${this.offset.y.toFixed(1)})`, 10, y);
   }
 
   /**
@@ -405,7 +381,6 @@ export class RenderSystem {
    * @returns {Object} Render system state
    */
   getState() {
-    const offset = this.offset.dataSync();
     return {
       showFPS: this.showFPS,
       showDebugInfo: this.showDebugInfo,
@@ -414,7 +389,7 @@ export class RenderSystem {
       borderColor: this.borderColor,
       borderWidth: this.borderWidth,
       scale: this.scale,
-      offset: { x: offset[0], y: offset[1] },
+      offset: { x: this.offset.x, y: this.offset.y },
       currentFPS: this.currentFPS,
       arenaId: this.arena ? this.arena.id : null
     };
@@ -432,8 +407,7 @@ export class RenderSystem {
     this.borderColor = state.borderColor;
     this.borderWidth = state.borderWidth;
     this.scale = state.scale;
-    this.offset.dispose();
-    this.offset = tf.tensor2d([[state.offset.x, state.offset.y]]);
+    this.offset = new Vector2(state.offset.x, state.offset.y);
     this.currentFPS = state.currentFPS;
     // Note: Arena reference would need to be restored separately
   }
@@ -459,6 +433,6 @@ export class RenderSystem {
    * Dispose of resources
    */
   dispose() {
-    this.offset.dispose();
+    // Vector2 doesn't need disposal
   }
 }

@@ -3,8 +3,8 @@
  * Handles state normalization, feature engineering, and data preprocessing
  */
 
-// TensorFlow.js is loaded from CDN as a global 'tf' object
 import { GameConfig } from '../../config/config.js';
+import { Vector2 } from '../../utils/Vector2.js';
 
 export class GameStateProcessor {
   constructor(options = {}) {
@@ -35,23 +35,27 @@ export class GameStateProcessor {
     const features = [];
 
     // Position features (normalized to [-1, 1])
-    // Extract position data from tensors
-    const playerPos = gameState.playerPosition.dataSync();
-    const opponentPos = gameState.opponentPosition.dataSync();
+    // Extract position data from Vector2
+    const playerPos = gameState.playerPosition instanceof Vector2 
+      ? gameState.playerPosition 
+      : (Array.isArray(gameState.playerPosition) ? new Vector2(gameState.playerPosition[0], gameState.playerPosition[1]) : new Vector2(0, 0));
+    const opponentPos = gameState.opponentPosition instanceof Vector2
+      ? gameState.opponentPosition
+      : (Array.isArray(gameState.opponentPosition) ? new Vector2(gameState.opponentPosition[0], gameState.opponentPosition[1]) : new Vector2(0, 0));
     
     if (this.options.normalizePositions) {
       features.push(
-        this.normalizePosition(playerPos[0], 'x'),
-        this.normalizePosition(playerPos[1], 'y'),
-        this.normalizePosition(opponentPos[0], 'x'),
-        this.normalizePosition(opponentPos[1], 'y')
+        this.normalizePosition(playerPos.x, 'x'),
+        this.normalizePosition(playerPos.y, 'y'),
+        this.normalizePosition(opponentPos.x, 'x'),
+        this.normalizePosition(opponentPos.y, 'y')
       );
     } else {
       features.push(
-        playerPos[0],
-        playerPos[1],
-        opponentPos[0],
-        opponentPos[1]
+        playerPos.x,
+        playerPos.y,
+        opponentPos.x,
+        opponentPos.y
       );
     }
 
@@ -78,16 +82,11 @@ export class GameStateProcessor {
 
     // Distance features
     if (this.options.includeDistance) {
-      const distance = this.calculateDistance(
-        playerPos,
-        opponentPos
-      );
+      const distance = playerPos.distance(opponentPos);
       features.push(this.normalizeDistance(distance));
     }
 
-    // Dispose of tensors to prevent memory leaks
-    gameState.playerPosition.dispose();
-    gameState.opponentPosition.dispose();
+    // Vector2 doesn't need disposal
 
     return features;
   }
@@ -208,12 +207,12 @@ export class GameStateProcessor {
     }
 
     return {
-      playerPosition: player.getPosition().dataSync(),
-      opponentPosition: opponent.getPosition().dataSync(),
+      playerPosition: player.getPosition(), // Returns Vector2
+      opponentPosition: opponent.getPosition(), // Returns Vector2
       playerSaberAngle: player.getSaber().getAngle(),
-      playerSaberAngularVelocity: player.getSaber().getAngularVelocity(),
+      playerSaberAngularVelocity: player.getSaber().getRotationSpeed(), // Use rotationSpeed
       opponentSaberAngle: opponent.getSaber().getAngle(),
-      opponentSaberAngularVelocity: opponent.getSaber().getAngularVelocity(),
+      opponentSaberAngularVelocity: opponent.getSaber().getRotationSpeed(),
       timestamp: Date.now()
     };
   }
@@ -228,9 +227,17 @@ export class GameStateProcessor {
     const enhanced = [...baseFeatures];
 
     if (gameState) {
+      // Extract positions as Vector2
+      const playerPos = gameState.playerPosition instanceof Vector2 
+        ? gameState.playerPosition 
+        : new Vector2(gameState.playerPosition[0] || 0, gameState.playerPosition[1] || 0);
+      const opponentPos = gameState.opponentPosition instanceof Vector2
+        ? gameState.opponentPosition
+        : new Vector2(gameState.opponentPosition[0] || 0, gameState.opponentPosition[1] || 0);
+      
       // Relative position features
-      const relativeX = gameState.opponentPosition[0] - gameState.playerPosition[0];
-      const relativeY = gameState.opponentPosition[1] - gameState.playerPosition[1];
+      const relativeX = opponentPos.x - playerPos.x;
+      const relativeY = opponentPos.y - playerPos.y;
       
       enhanced.push(
         this.normalizePosition(relativeX, 'x'),
@@ -243,15 +250,15 @@ export class GameStateProcessor {
 
       // Saber tip positions (for collision prediction)
       const playerSaberTip = this.calculateSaberTip(
-        gameState.playerPosition,
+        playerPos,
         gameState.playerSaberAngle
       );
       const opponentSaberTip = this.calculateSaberTip(
-        gameState.opponentPosition,
+        opponentPos,
         gameState.opponentSaberAngle
       );
 
-      const saberTipDistance = this.calculateDistance(playerSaberTip, opponentSaberTip);
+      const saberTipDistance = playerSaberTip.distance(opponentSaberTip);
       enhanced.push(this.normalizeDistance(saberTipDistance));
     }
 
@@ -260,16 +267,19 @@ export class GameStateProcessor {
 
   /**
    * Calculate saber tip position
-   * @param {Array} position - Player position [x, y]
+   * @param {Vector2|Array} position - Player position (Vector2 or [x, y])
    * @param {number} angle - Saber angle
-   * @returns {Array} Saber tip position [x, y]
+   * @returns {Vector2} Saber tip position
    */
   calculateSaberTip(position, angle) {
-    const saberLength = GameConfig.arena.saberLength;
-    return [
-      position[0] + Math.cos(angle) * saberLength,
-      position[1] + Math.sin(angle) * saberLength
-    ];
+    const saberLength = GameConfig.saber.length;
+    const pos = position instanceof Vector2 
+      ? position 
+      : new Vector2(position[0] || 0, position[1] || 0);
+    return new Vector2(
+      pos.x + Math.cos(angle) * saberLength,
+      pos.y + Math.sin(angle) * saberLength
+    );
   }
 
   /**

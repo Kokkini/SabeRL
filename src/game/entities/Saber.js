@@ -3,8 +3,8 @@
  * Represents the rotating saber that can cause victory on contact
  */
 
-// TensorFlow.js is loaded from CDN as a global 'tf' object
 import { GameConfig } from '../../config/config.js';
+import { Vector2 } from '../../utils/Vector2.js';
 
 export class Saber {
   /**
@@ -72,8 +72,8 @@ export class Saber {
 
   /**
    * Get saber tip position relative to owner position
-   * @param {tf.Tensor} ownerPosition - Position of the saber owner
-   * @returns {tf.Tensor} Saber tip position
+   * @param {Vector2} ownerPosition - Position of the saber owner
+   * @returns {Vector2} Saber tip position
    */
   getTipPosition(ownerPosition) {
     if (!ownerPosition) {
@@ -81,16 +81,17 @@ export class Saber {
     }
     
     // Calculate tip position based on current angle
-    const tipOffset = tf.tensor2d([[Math.cos(this.angle) * this.length, Math.sin(this.angle) * this.length]]);
-    const result = ownerPosition.add(tipOffset);
-    tipOffset.dispose();
-    return result;
+    const tipOffset = new Vector2(
+      Math.cos(this.angle) * this.length,
+      Math.sin(this.angle) * this.length
+    );
+    return ownerPosition.clone().add(tipOffset);
   }
 
   /**
    * Get saber base position (same as owner position)
-   * @param {tf.Tensor} ownerPosition - Position of the saber owner
-   * @returns {tf.Tensor} Saber base position
+   * @param {Vector2} ownerPosition - Position of the saber owner
+   * @returns {Vector2} Saber base position
    */
   getBasePosition(ownerPosition) {
     return ownerPosition.clone();
@@ -98,7 +99,7 @@ export class Saber {
 
   /**
    * Get saber endpoints for rendering
-   * @param {tf.Tensor} ownerPosition - Position of the saber owner
+   * @param {Vector2} ownerPosition - Position of the saber owner
    * @returns {Object} Saber endpoints {base, tip}
    */
   getEndpoints(ownerPosition) {
@@ -215,24 +216,21 @@ export class Saber {
 
   /**
    * Check if saber tip is colliding with a point
-   * @param {tf.Tensor} ownerPosition - Position of the saber owner
-   * @param {tf.Tensor} point - Point to check collision with
+   * @param {Vector2} ownerPosition - Position of the saber owner
+   * @param {Vector2} point - Point to check collision with
    * @param {number} tolerance - Collision tolerance (default 0.1)
    * @returns {boolean} True if colliding
    */
   isTipCollidingWithPoint(ownerPosition, point, tolerance = 0.1) {
     const tipPosition = this.getTipPosition(ownerPosition);
-    const distance = tf.norm(tipPosition.sub(point));
-    const result = distance.dataSync()[0] <= tolerance;
-    distance.dispose();
-    tipPosition.dispose();
-    return result;
+    const distance = tipPosition.distance(point);
+    return distance <= tolerance;
   }
 
   /**
    * Check if saber line segment is colliding with a circle
-   * @param {tf.Tensor} ownerPosition - Position of the saber owner
-   * @param {tf.Tensor} circleCenter - Circle center position
+   * @param {Vector2} ownerPosition - Position of the saber owner
+   * @param {Vector2} circleCenter - Circle center position
    * @param {number} circleRadius - Circle radius
    * @returns {boolean} True if colliding
    */
@@ -240,51 +238,40 @@ export class Saber {
     const endpoints = this.getEndpoints(ownerPosition);
     
     // Check if line segment intersects with circle
-    const dx = endpoints.tip.dataSync()[0] - endpoints.base.dataSync()[0];
-    const dy = endpoints.tip.dataSync()[1] - endpoints.base.dataSync()[1];
+    const dx = endpoints.tip.x - endpoints.base.x;
+    const dy = endpoints.tip.y - endpoints.base.y;
     
     // Vector from line start to circle center
-    const fx = circleCenter.dataSync()[0] - endpoints.base.dataSync()[0];
-    const fy = circleCenter.dataSync()[1] - endpoints.base.dataSync()[1];
+    const fx = circleCenter.x - endpoints.base.x;
+    const fy = circleCenter.y - endpoints.base.y;
     
     // Project circle center onto line
     const lineLengthSquared = dx * dx + dy * dy;
     if (lineLengthSquared === 0) {
       // Line is a point (base and tip are the same)
-      const distance = tf.norm(endpoints.base.sub(circleCenter));
-      const result = distance.dataSync()[0] <= circleRadius;
-      distance.dispose();
-      endpoints.base.dispose();
-      endpoints.tip.dispose();
-      return result;
+      const distance = endpoints.base.distance(circleCenter);
+      return distance <= circleRadius;
     }
     
     const t = Math.max(0, Math.min(1, (fx * dx + fy * dy) / lineLengthSquared));
     
     // Find closest point on line to circle center
-    const closestX = endpoints.base.dataSync()[0] + t * dx;
-    const closestY = endpoints.base.dataSync()[1] + t * dy;
-    const closestPoint = tf.tensor2d([[closestX, closestY]]);
+    const closestPoint = new Vector2(
+      endpoints.base.x + t * dx,
+      endpoints.base.y + t * dy
+    );
     
     // Check if closest point is within circle radius
-    const distance = tf.norm(closestPoint.sub(circleCenter));
-    const result = distance.dataSync()[0] <= circleRadius;
-    
-    // Clean up tensors
-    distance.dispose();
-    closestPoint.dispose();
-    endpoints.base.dispose();
-    endpoints.tip.dispose();
-    
-    return result;
+    const distance = closestPoint.distance(circleCenter);
+    return distance <= circleRadius;
   }
 
   /**
    * Get saber direction vector
-   * @returns {tf.Tensor} Normalized direction vector
+   * @returns {Vector2} Normalized direction vector
    */
   getDirection() {
-    return tf.tensor2d([[Math.cos(this.angle), Math.sin(this.angle)]]);
+    return new Vector2(Math.cos(this.angle), Math.sin(this.angle));
   }
 
   /**
