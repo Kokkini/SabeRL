@@ -16,7 +16,7 @@ export class TrainingSession {
   constructor(game, options = {}) {
     this.game = game;
     this.options = {
-      maxGames: options.maxGames || 1000,
+      maxGames: options.maxGames || GameConfig.rl.maxGames || 1000,
       autoSaveInterval: options.autoSaveInterval || GameConfig.rl.autoSaveInterval,
       ...options
     };
@@ -276,6 +276,9 @@ export class TrainingSession {
           // Update metrics BEFORE training (so metrics are ready for callback)
           this.updateMetricsFromExperiences(allExperiences);
           
+          // Calculate rollout-specific statistics for charts
+          const rolloutStats = this.calculateRolloutStatistics(allExperiences);
+          
           // Yield before training to allow UI updates
           await this.yieldToEventLoop();
           
@@ -287,8 +290,8 @@ export class TrainingSession {
           // Yield before UI update to ensure responsiveness
           await this.yieldToEventLoop();
           
-          // Update UI after training completes
-          this.notifyTrainingProgress();
+          // Update UI after training completes with rollout-specific stats
+          this.notifyTrainingProgress(rolloutStats);
         }
         
         // Check if training should continue
@@ -472,9 +475,92 @@ export class TrainingSession {
   }
 
   /**
-   * Notify UI about training progress
+   * Calculate rollout-specific statistics (for current rollout only)
+   * @param {Array} experiences - Rollout experiences
+   * @returns {Object} Rollout statistics
    */
-  notifyTrainingProgress() {
+  calculateRolloutStatistics(experiences) {
+    let wins = 0;
+    let losses = 0;
+    let ties = 0;
+    const gameLengths = [];
+    const rewards = [];
+    
+    // Track current game
+    let currentGameLength = 0;
+    let currentGameTotalReward = 0;
+    
+    for (const exp of experiences) {
+      currentGameTotalReward += exp.reward;
+      currentGameLength++;
+      
+      if (exp.done) {
+        // Game ended - determine outcome from the terminal reward
+        const terminalReward = exp.reward;
+        let won = false;
+        let isTie = false;
+        
+        if (terminalReward > 0.3) {
+          won = true;
+          wins++;
+        } else if (terminalReward < -0.3) {
+          won = false;
+          losses++;
+        } else {
+          won = false;
+          isTie = true;
+          ties++;
+        }
+        
+        // Store this game's statistics
+        gameLengths.push(currentGameLength);
+        rewards.push(currentGameTotalReward);
+        
+        // Reset for next game
+        currentGameLength = 0;
+        currentGameTotalReward = 0;
+      }
+    }
+    
+    // Calculate averages for this rollout only
+    const gamesCompleted = wins + losses + ties;
+    const avgGameLength = gameLengths.length > 0 
+      ? gameLengths.reduce((sum, len) => sum + len, 0) / gameLengths.length 
+      : 0;
+    
+    const winRate = gamesCompleted > 0 ? wins / gamesCompleted : 0;
+    const lossRate = gamesCompleted > 0 ? losses / gamesCompleted : 0;
+    const tieRate = gamesCompleted > 0 ? ties / gamesCompleted : 0;
+    
+    // Calculate reward statistics for this rollout
+    const rewardAvg = rewards.length > 0 
+      ? rewards.reduce((sum, r) => sum + r, 0) / rewards.length 
+      : 0;
+    const rewardMin = rewards.length > 0 ? Math.min(...rewards) : 0;
+    const rewardMax = rewards.length > 0 ? Math.max(...rewards) : 0;
+    
+    return {
+      gamesCompleted,
+      wins,
+      losses,
+      ties,
+      winRate,
+      lossRate,
+      tieRate,
+      averageGameLength: avgGameLength,
+      rewardStats: {
+        avg: rewardAvg,
+        min: rewardMin,
+        max: rewardMax
+      }
+    };
+  }
+
+  /**
+   * Notify UI about training progress
+   * @param {Object} rolloutStats - Optional rollout-specific statistics (if not provided, uses cumulative metrics)
+   */
+  notifyTrainingProgress(rolloutStats = null) {
     // Update training time
     if (this.trainingStartTime > 0) {
       this.trainingMetrics.trainingTime = Date.now() - this.trainingStartTime;
@@ -483,9 +569,25 @@ export class TrainingSession {
     // Schedule UI updates asynchronously to avoid blocking training
     // Use setTimeout to ensure UI updates happen in next event loop cycle
     setTimeout(() => {
+      // If rolloutStats provided, merge with trainingMetrics for chart updates
+      // This allows charts to show rollout-specific averages while other metrics remain cumulative
+      const metricsToSend = rolloutStats 
+        ? {
+            ...this.trainingMetrics,
+            // Override with rollout-specific stats for charts
+            averageGameLength: rolloutStats.averageGameLength,
+            gamesCompleted: rolloutStats.gamesCompleted, // Use rollout-specific count for rate calculations
+            wins: rolloutStats.wins,
+            losses: rolloutStats.losses,
+            ties: rolloutStats.ties,
+            winRate: rolloutStats.winRate,
+            rewardStats: rolloutStats.rewardStats
+          }
+        : this.trainingMetrics;
+      
       // Call onTrainingProgress callback for UI updates
       if (this.onTrainingProgress) {
-        this.onTrainingProgress(this.trainingMetrics);
+        this.onTrainingProgress(metricsToSend);
       }
       
       // Also call onGameEnd for games completed display (using null winner to indicate batch update)

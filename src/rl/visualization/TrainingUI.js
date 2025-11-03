@@ -1106,13 +1106,13 @@ export class TrainingUI {
 
   /**
    * Calculate batch statistics from metrics
-   * @param {Object} metrics - Training metrics
+   * @param {Object} metrics - Training metrics (rollout-specific for charts, cumulative for other metrics)
    * @returns {Object} Batch statistics
    */
   calculateBatchStatistics(metrics) {
     console.log('Calculating batch statistics from metrics:', metrics);
     
-    // Use metrics directly (aggregated from all games)
+    // Use metrics directly (rollout-specific for charts: averageGameLength, wins/losses/ties, rewardStats)
     const rewardStats = metrics.rewardStats || { avg: 0, min: 0, max: 0 };
     
     // Convert game length from steps to seconds

@@ -486,7 +486,7 @@ class SabeRLArena {
 
       // Create training session
       this.trainingSession = new TrainingSession(this.game, {
-        maxGames: 1000,
+        maxGames: GameConfig.rl.maxGames,
         autoSaveInterval: GameConfig.rl.autoSaveInterval
       });
 

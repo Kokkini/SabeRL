@@ -260,6 +260,7 @@ export const GameConfig = {
     // Performance settings
     maxMemoryUsage: 2 * 1024 * 1024 * 1024, // 2GB
     autoSaveInterval: 50, // Auto-save every N games
+    maxGames: 100000, // Maximum number of games to train for
     performanceMonitoring: true,
     
     // UI settings
@@ -275,7 +276,8 @@ export const GameConfig = {
       timePenaltyThreshold: 0, // Start applying time penalty after this many seconds
       maxGameLength: 60,   // Max game length in seconds
       // distancePenaltyFactor: -1.0 // Per second penalty proportional to distance (distance * factor)
-      distancePenaltyFactor: 0.0 // Per second penalty proportional to distance (distance * factor)
+      distancePenaltyFactor: 0.0, // Per second penalty proportional to distance (distance * factor)
+      deltaDistanceRewardFactor: 10.0 // Per second reward for getting closer (deltaDistance * factor * deltaTime)
     },
 
     // Headless simulation tuning

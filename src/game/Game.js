@@ -32,6 +32,9 @@ export class Game {
     this.stepCount = 0;
     this.cumPlayerDecisionTime = 0;
     
+    // Track previous distance for delta distance reward
+    this.previousDistance = null;
+    
     // Game entities
     this.arena = null;
     this.players = [];
@@ -312,8 +315,18 @@ export class Game {
     // Reset all entities
     this.resetGameEntities();
     
-    // Return initial observation
+    // Initialize previous distance for delta distance reward calculation
     const player = this.getPlayer();
+    const ai = this.getAI();
+    if (player && ai) {
+      const playerPos = player.getPosition();
+      const aiPos = ai.getPosition();
+      this.previousDistance = playerPos.distance(aiPos);
+    } else {
+      this.previousDistance = null;
+    }
+    
+    // Return initial observation
     return this.createGameState(player);
   }
 
@@ -443,6 +456,31 @@ export class Game {
           const distance = playerPos.distance(aiPos);
           const distancePenaltyPerSecond = distance * distancePenaltyFactor;
           reward += distancePenaltyPerSecond * deltaTime; // Convert per-second to per-step
+        }
+      }
+      
+      // Calculate delta distance reward (reward for getting closer)
+      const deltaDistanceRewardFactor = GameConfig.rl.rewards.deltaDistanceRewardFactor || 0;
+      if (deltaDistanceRewardFactor !== 0 && player && this.previousDistance !== null) {
+        const ai = this.getAI();
+        if (ai) {
+          const playerPos = player.getPosition();
+          const aiPos = ai.getPosition();
+          const currentDistance = playerPos.distance(aiPos);
+          const deltaDistance = this.previousDistance - currentDistance; // Positive if getting closer
+          const deltaDistanceReward = deltaDistanceRewardFactor * deltaDistance * deltaTime;
+          reward += deltaDistanceReward;
+          
+          // Update previous distance for next step
+          this.previousDistance = currentDistance;
+        }
+      } else if (player && this.previousDistance === null) {
+        // Initialize previous distance if not set
+        const ai = this.getAI();
+        if (ai) {
+          const playerPos = player.getPosition();
+          const aiPos = ai.getPosition();
+          this.previousDistance = playerPos.distance(aiPos);
         }
       }
     }
