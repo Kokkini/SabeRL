@@ -127,7 +127,12 @@ export class TrainingSession {
     this.trainer = new PPOTrainer({
       learningRate: GameConfig.rl.learningRate,
       miniBatchSize: GameConfig.rl.miniBatchSize,
-      epochs: GameConfig.rl.epochs
+      epochs: GameConfig.rl.epochs,
+      clipRatio: GameConfig.rl.clipRatio,
+      valueLossCoeff: GameConfig.rl.valueLossCoeff,
+      entropyCoeff: GameConfig.rl.entropyCoeff,
+      maxGradNorm: GameConfig.rl.maxGradNorm,
+      gaeLambda: GameConfig.rl.gaeLambda
     });
   }
 

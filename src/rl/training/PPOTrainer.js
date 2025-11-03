@@ -22,11 +22,12 @@ export class PPOTrainer {
     
     this.options = {
       learningRate: options.learningRate || GameConfig.rl.learningRate,
-      clipRatio: options.clipRatio || 0.2,
-      valueLossCoeff: options.valueLossCoeff || 0.5,
-      entropyCoeff: options.entropyCoeff || 0.01,
-      maxGradNorm: options.maxGradNorm || 0.5,
-      epochs: options.epochs || 4,
+      clipRatio: options.clipRatio || GameConfig.rl.clipRatio || 0.2,
+      valueLossCoeff: options.valueLossCoeff || GameConfig.rl.valueLossCoeff || 0.5,
+      entropyCoeff: options.entropyCoeff || GameConfig.rl.entropyCoeff || 0.01,
+      maxGradNorm: options.maxGradNorm || GameConfig.rl.maxGradNorm || 0.5,
+      gaeLambda: options.gaeLambda || GameConfig.rl.gaeLambda || 0.95,
+      epochs: options.epochs || GameConfig.rl.epochs || 4,
       miniBatchSize: options.miniBatchSize || GameConfig.rl.miniBatchSize,
       ...options
     };
@@ -235,12 +236,16 @@ export class PPOTrainer {
    */
   async trainBatch(batch, policyModel, valueModel) {
     return tf.tidy(() => {
-      // Compute value predictions for GAE (bootstrap with 0 at terminal)
-      const valuesPred = valueModel
-        ? valueModel.predict(batch.states).squeeze()
-        : tf.zerosLike(batch.rewards);
-      // Compute advantages and returns using predicted values
-      const { advantages, returns } = this.computeAdvantages(batch, valuesPred);
+      // Use stored values from rollout for GAE computation (standard PPO practice)
+      // This maintains consistency - the baseline doesn't change during training epochs
+      // Only use predicted values if stored values are not available
+      const valuesForGAE = batch.values && batch.values.shape[0] > 0
+        ? batch.values
+        : (valueModel
+            ? valueModel.predict(batch.states).squeeze()
+            : tf.zerosLike(batch.rewards));
+      // Compute advantages and returns using stored values from rollout
+      const { advantages, returns } = this.computeAdvantages(batch, valuesForGAE);
 
       // Normalize advantages per batch for stability
       const advMean = advantages.mean();
@@ -325,7 +330,7 @@ export class PPOTrainer {
    */
   computeAdvantages(batch, valuesTensor) {
     const gamma = GameConfig.rl.discountFactor;
-    const lambda = 0.95; // GAE parameter
+    const lambda = this.options.gaeLambda; // GAE parameter (from config)
 
     const rewards = batch.rewards.dataSync();
     const dones = batch.dones.dataSync();
@@ -447,11 +452,13 @@ export class PPOTrainer {
     this.trainingStats.entropy = entropy.dataSync()[0];
     
     // Compute KL divergence using per-action log-probs
+    // KL(old || new) = mean(log_old - log_new) = mean(old - new)
+    // This is the standard KL divergence used in PPO for monitoring
     const actionMask = tf.oneHot(actions.cast('int32'), 4);
     const curActionLogProbs = tf.sum(logProbs.mul(actionMask), 1);
     const oldActionLogProbs = oldLogProbs.squeeze();
-    const klDiv = curActionLogProbs.sub(oldActionLogProbs).mean();
-    this.trainingStats.klDivergence = klDiv.dataSync()[0];
+    const klDiv = oldActionLogProbs.sub(curActionLogProbs).mean();
+    this.trainingStats.klDivergence = Math.abs(klDiv.dataSync()[0]); // Use absolute value for monitoring
     
     // Compute clip fraction using per-action ratios
     const ratio = tf.exp(curActionLogProbs.sub(oldActionLogProbs));

@@ -148,7 +148,7 @@ export class AI {
   kill() {
     this.isAlive = false;
     this.velocity = new Vector2(0, 0);
-    this.saber.setActive(false);
+    // this.saber.setActive(false);
   }
 
   /**
@@ -159,7 +159,7 @@ export class AI {
     this.isAlive = true;
     this.position = position.clone();
     this.velocity = new Vector2(0, 0);
-    this.saber.setActive(true);
+    // this.saber.setActive(true);
     this.saber.setAngle(0); // Reset saber angle
     
     // Reset direction change timing

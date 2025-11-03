@@ -237,11 +237,18 @@ export const GameConfig = {
     
     // Training parameters
     learningRate: 0.001,
-    explorationRate: 0.1, // Higher exploration for untrained network
+    explorationRate: 0.1, // Higher exploration for untrained network (note: PPO uses entropy for exploration, this is for fallback)
     miniBatchSize: 64, // Mini-batch size for gradient updates
     epochs: 4, // Number of epochs to train for
     rewardScaling: 1.0,
     discountFactor: 0.99,
+    
+    // PPO-specific hyperparameters
+    clipRatio: 0.2,           // PPO clipping ratio (typically 0.1-0.3)
+    valueLossCoeff: 0.5,       // Value function loss coefficient (typically 0.5)
+    entropyCoeff: 0.01,         // Entropy bonus coefficient (typically 0.01-0.05, encourages exploration)
+    maxGradNorm: 0.5,          // Gradient clipping norm (typically 0.5)
+    gaeLambda: 0.95,           // GAE lambda parameter (typically 0.9-0.99)
     
     // Game settings
     decisionInterval: 0.25, // seconds between AI decisions
@@ -267,7 +274,8 @@ export const GameConfig = {
       timePenalty: 0.0, // Per second penalty
       timePenaltyThreshold: 0, // Start applying time penalty after this many seconds
       maxGameLength: 60,   // Max game length in seconds
-      distancePenaltyFactor: -0.002 // Per second penalty proportional to distance (distance * factor)
+      // distancePenaltyFactor: -1.0 // Per second penalty proportional to distance (distance * factor)
+      distancePenaltyFactor: 0.0 // Per second penalty proportional to distance (distance * factor)
     },
 
     // Headless simulation tuning

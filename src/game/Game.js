@@ -356,7 +356,7 @@ export class Game {
       }
     }
     
-    // Update AI movement
+    // Update AI movement (already includes saber update internally)
     for (const ai of this.ais) {
       ai.update(deltaTime);
     }
@@ -364,9 +364,6 @@ export class Game {
     // Update saber rotations
     if (player) {
       player.getSaber().update(deltaTime);
-    }
-    for (const ai of this.ais) {
-      ai.getSaber().update(deltaTime);
     }
     
     // Check for collisions

@@ -32,14 +32,13 @@ export class Saber {
    * @param {number} deltaTime - Time since last update in seconds
    */
   update(deltaTime) {
-    if (!this._isActive) return;
+    // if (!this._isActive) return;
     
     // Update rotation angle
     this.angle += this.rotationSpeed * deltaTime;
     
     // Normalize angle to 0-2π range
     this.angle = this.normalizeAngle(this.angle);
-    
     this.lastUpdateTime = Date.now();
   }
 
@@ -301,7 +300,7 @@ export class Saber {
     this.length = state.length;
     this.angle = this.normalizeAngle(state.angle);
     this.rotationSpeed = state.rotationSpeed;
-    this._isActive = state.isActive;
+    // this._isActive = state.isActive;
     this.color = state.color;
     this.width = state.width;
   }
