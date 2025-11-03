@@ -80,18 +80,6 @@ export class TrainingMetrics {
     
     // Update win rate
     this.winRate = this.wins / this.gamesCompleted;
-    console.log('[TrainingMetrics] updateGameResult:', {
-      won,
-      isTie,
-      gameLength,
-      reward,
-      wins: this.wins,
-      losses: this.losses,
-      ties: this.ties,
-      gamesCompleted: this.gamesCompleted,
-      winRateRaw: this.winRate,
-      winRatePercent: this.winRate * 100
-    });
     
     // Update game length
     this.gameLengthHistory.push(gameLength);

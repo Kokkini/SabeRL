@@ -26,6 +26,9 @@ export class TrainingUI {
     this.chart = null;
     this.gameLengthChart = null;
     this.winRateChart = null;
+    this.entropyChart = null;
+    this.policyLossChart = null;
+    this.valueLossChart = null;
 
     // Chart data
     this.chartData = {
@@ -164,7 +167,7 @@ export class TrainingUI {
           </div>
           <div class="status-item">
             <span class="status-label">Games:</span>
-            <span id="games-completed" class="status-value">0 / 1000</span>
+            <span id="games-completed" class="status-value">0 / ${GameConfig.rl.maxGames || 1000}</span>
           </div>
           <div class="status-item">
             <span class="status-label">Win Rate:</span>
@@ -215,6 +218,18 @@ export class TrainingUI {
           <h4>Average Game Length</h4>
           <canvas id="game-length-chart" width="400" height="300"></canvas>
         </div>
+        <div class="chart-container" id="entropy-chart-container" style="display: none; height: 400px;">
+          <h4>Policy Entropy</h4>
+          <canvas id="entropy-chart" width="400" height="300"></canvas>
+        </div>
+        <div class="chart-container" id="policy-loss-chart-container" style="display: none; height: 400px;">
+          <h4>Policy Loss</h4>
+          <canvas id="policy-loss-chart" width="400" height="300"></canvas>
+        </div>
+        <div class="chart-container" id="value-loss-chart-container" style="display: none; height: 400px;">
+          <h4>Value Loss</h4>
+          <canvas id="value-loss-chart" width="400" height="300"></canvas>
+        </div>
       </div>
     `;
 
@@ -231,6 +246,15 @@ export class TrainingUI {
     this.winRateChartContainer = document.getElementById('win-rate-chart');
     this.winRateChartContainerDiv = document.getElementById('win-rate-chart-container');
     
+    // Entropy chart refs
+    this.entropyChartContainer = document.getElementById('entropy-chart');
+    this.entropyChartContainerDiv = document.getElementById('entropy-chart-container');
+    // Loss charts refs
+    this.policyLossChartContainer = document.getElementById('policy-loss-chart');
+    this.policyLossChartContainerDiv = document.getElementById('policy-loss-chart-container');
+    this.valueLossChartContainer = document.getElementById('value-loss-chart');
+    this.valueLossChartContainerDiv = document.getElementById('value-loss-chart-container');
+    
     // Don't initialize chart until training starts
     // this.initializeChart();
   }
@@ -242,6 +266,9 @@ export class TrainingUI {
     this.initializeChart();
     this.initializeGameLengthChart();
     this.initializeWinRateChart();
+    this.initializeEntropyChart();
+    this.initializePolicyLossChart();
+    this.initializeValueLossChart();
   }
 
   /**
@@ -469,6 +496,147 @@ export class TrainingUI {
   }
 
   /**
+   * Initialize entropy chart
+   */
+  initializeEntropyChart() {
+    console.log('Initializing entropy chart...');
+    if (!this.entropyChartContainer) {
+      console.warn('No entropy chart container found');
+      return;
+    }
+    const ChartConstructor = window.Chart || Chart;
+    if (typeof ChartConstructor === 'undefined') {
+      console.warn('Chart.js not loaded, entropy chart will be initialized later');
+      return;
+    }
+    try {
+      const ctx = this.entropyChartContainer.getContext('2d');
+      this.entropyChart = new ChartConstructor(ctx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: 'Policy Entropy',
+              data: [],
+              borderColor: '#9c27b0',
+              backgroundColor: 'rgba(156, 39, 176, 0.1)',
+              tension: 0.1
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          layout: {
+            padding: { top: 10, bottom: 10, left: 10, right: 10 }
+          },
+          scales: {
+            x: { title: { display: true, text: 'Batches' } },
+            y: { title: { display: true, text: 'Entropy' } }
+          },
+          plugins: { legend: { display: true, position: 'top' } }
+        }
+      });
+      console.log('Entropy chart created successfully:', !!this.entropyChart);
+    } catch (error) {
+      console.error('Failed to initialize entropy chart:', error);
+    }
+  }
+
+  /**
+   * Initialize policy loss chart
+   */
+  initializePolicyLossChart() {
+    console.log('Initializing policy loss chart...');
+    if (!this.policyLossChartContainer) {
+      console.warn('No policy loss chart container found');
+      return;
+    }
+    const ChartConstructor = window.Chart || Chart;
+    if (typeof ChartConstructor === 'undefined') {
+      console.warn('Chart.js not loaded, policy loss chart will be initialized later');
+      return;
+    }
+    try {
+      const ctx = this.policyLossChartContainer.getContext('2d');
+      this.policyLossChart = new ChartConstructor(ctx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: 'Policy Loss',
+              data: [],
+              borderColor: '#2196f3',
+              backgroundColor: 'rgba(33, 150, 243, 0.1)',
+              tension: 0.1
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          layout: { padding: { top: 10, bottom: 10, left: 10, right: 10 } },
+          scales: {
+            x: { title: { display: true, text: 'Batches' } },
+            y: { title: { display: true, text: 'Policy Loss' } }
+          },
+          plugins: { legend: { display: true, position: 'top' } }
+        }
+      });
+    } catch (error) {
+      console.error('Failed to initialize policy loss chart:', error);
+    }
+  }
+
+  /**
+   * Initialize value loss chart
+   */
+  initializeValueLossChart() {
+    console.log('Initializing value loss chart...');
+    if (!this.valueLossChartContainer) {
+      console.warn('No value loss chart container found');
+      return;
+    }
+    const ChartConstructor = window.Chart || Chart;
+    if (typeof ChartConstructor === 'undefined') {
+      console.warn('Chart.js not loaded, value loss chart will be initialized later');
+      return;
+    }
+    try {
+      const ctx = this.valueLossChartContainer.getContext('2d');
+      this.valueLossChart = new ChartConstructor(ctx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: 'Value Loss',
+              data: [],
+              borderColor: '#ff9800',
+              backgroundColor: 'rgba(255, 152, 0, 0.1)',
+              tension: 0.1
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          layout: { padding: { top: 10, bottom: 10, left: 10, right: 10 } },
+          scales: {
+            x: { title: { display: true, text: 'Batches' } },
+            y: { title: { display: true, text: 'Value Loss' } }
+          },
+          plugins: { legend: { display: true, position: 'top' } }
+        }
+      });
+    } catch (error) {
+      console.error('Failed to initialize value loss chart:', error);
+    }
+  }
+
+  /**
    * Set up event listeners
    */
   setupEventListeners() {
@@ -552,7 +720,7 @@ export class TrainingUI {
     const ChartConstructor = window.Chart || Chart;
     if (typeof ChartConstructor === 'function' && this.chartContainer) {
       this.initializeAllCharts();
-      console.log('Charts initialized - Reward:', !!this.chart, 'Game Length:', !!this.gameLengthChart, 'Win Rate:', !!this.winRateChart);
+      console.log('Charts initialized - Reward:', !!this.chart, 'Game Length:', !!this.gameLengthChart, 'Win Rate:', !!this.winRateChart, 'Entropy:', !!this.entropyChart);
     } else {
       console.warn('Cannot initialize chart - Chart.js or container not available');
       console.log('Chart.js type:', typeof Chart);
@@ -687,9 +855,18 @@ export class TrainingUI {
     if (this.winRateChartContainerDiv) {
       this.winRateChartContainerDiv.style.display = 'block';
     }
+    if (this.entropyChartContainerDiv) {
+      this.entropyChartContainerDiv.style.display = 'block';
+    }
+    if (this.policyLossChartContainerDiv) {
+      this.policyLossChartContainerDiv.style.display = 'block';
+    }
+    if (this.valueLossChartContainerDiv) {
+      this.valueLossChartContainerDiv.style.display = 'block';
+    }
     
     // Initialize all charts if not already done
-    if (!this.chart || !this.gameLengthChart || !this.winRateChart) {
+    if (!this.chart || !this.gameLengthChart || !this.winRateChart || !this.entropyChart || !this.policyLossChart || !this.valueLossChart) {
       this.forceChartInitialization();
     }
   }
@@ -1025,6 +1202,9 @@ export class TrainingUI {
         this.chart.update('none');
         this.updateGameLengthChart(batchStats, this.batchNumber);
         this.updateWinRateChart(batchStats, this.batchNumber);
+        this.updateEntropyChart(batchStats, this.batchNumber);
+        this.updatePolicyLossChart(batchStats, this.batchNumber);
+        this.updateValueLossChart(batchStats, this.batchNumber);
       }, 0);
     } else {
       // Tab visible: use requestAnimationFrame for smooth rendering
@@ -1032,6 +1212,9 @@ export class TrainingUI {
         this.chart.update('none');
         this.updateGameLengthChart(batchStats, this.batchNumber);
         this.updateWinRateChart(batchStats, this.batchNumber);
+        this.updateEntropyChart(batchStats, this.batchNumber);
+        this.updatePolicyLossChart(batchStats, this.batchNumber);
+        this.updateValueLossChart(batchStats, this.batchNumber);
       });
     }
   }
@@ -1089,6 +1272,60 @@ export class TrainingUI {
     }
     
     this.winRateChart.update('none');
+  }
+
+  /**
+   * Update entropy chart
+   * @param {Object} batchStats - Batch statistics
+   * @param {number} batchNumber - Batch number
+   */
+  updateEntropyChart(batchStats, batchNumber) {
+    if (!this.entropyChart) return;
+    const trainerStats = (this.trainingSession && this.trainingSession.trainer && this.trainingSession.trainer.getStats) ? this.trainingSession.trainer.getStats() : {};
+    const fallbackEntropy = trainerStats.entropy || 0;
+    const entropy = typeof batchStats.policyEntropy === 'number' ? batchStats.policyEntropy : fallbackEntropy;
+    this.entropyChart.data.labels.push(`Batch ${batchNumber}`);
+    this.entropyChart.data.datasets[0].data.push(entropy);
+    const maxPoints = GameConfig.rl.chartMaxDataPoints;
+    if (this.entropyChart.data.labels.length > maxPoints) {
+      this.entropyChart.data.labels.shift();
+      this.entropyChart.data.datasets[0].data.shift();
+    }
+    this.entropyChart.update('none');
+  }
+
+  /**
+   * Update policy loss chart
+   */
+  updatePolicyLossChart(batchStats, batchNumber) {
+    if (!this.policyLossChart) return;
+    const trainerStats = (this.trainingSession && this.trainingSession.trainer && this.trainingSession.trainer.getStats) ? this.trainingSession.trainer.getStats() : {};
+    const loss = trainerStats.policyLoss || 0;
+    this.policyLossChart.data.labels.push(`Batch ${batchNumber}`);
+    this.policyLossChart.data.datasets[0].data.push(loss);
+    const maxPoints = GameConfig.rl.chartMaxDataPoints;
+    if (this.policyLossChart.data.labels.length > maxPoints) {
+      this.policyLossChart.data.labels.shift();
+      this.policyLossChart.data.datasets[0].data.shift();
+    }
+    this.policyLossChart.update('none');
+  }
+
+  /**
+   * Update value loss chart
+   */
+  updateValueLossChart(batchStats, batchNumber) {
+    if (!this.valueLossChart) return;
+    const trainerStats = (this.trainingSession && this.trainingSession.trainer && this.trainingSession.trainer.getStats) ? this.trainingSession.trainer.getStats() : {};
+    const loss = trainerStats.valueLoss || 0;
+    this.valueLossChart.data.labels.push(`Batch ${batchNumber}`);
+    this.valueLossChart.data.datasets[0].data.push(loss);
+    const maxPoints = GameConfig.rl.chartMaxDataPoints;
+    if (this.valueLossChart.data.labels.length > maxPoints) {
+      this.valueLossChart.data.labels.shift();
+      this.valueLossChart.data.datasets[0].data.shift();
+    }
+    this.valueLossChart.update('none');
   }
 
   /**
@@ -1150,7 +1387,8 @@ export class TrainingUI {
       avgGameLength,
       winRate,
       lossRate,
-      tieRate
+      tieRate,
+      policyEntropy: metrics.policyEntropy || 0
     };
   }
 
@@ -1164,7 +1402,8 @@ export class TrainingUI {
     // Reset metrics
     const gamesElement = document.getElementById('games-completed');
     if (gamesElement) {
-      gamesElement.textContent = '0 / 1000';
+      const maxGames = this.trainingSession?.options.maxGames || GameConfig.rl.maxGames || 1000;
+      gamesElement.textContent = `0 / ${maxGames}`;
     }
 
     const winRateElement = document.getElementById('win-rate');

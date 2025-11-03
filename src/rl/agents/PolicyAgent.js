@@ -217,26 +217,22 @@ export class PolicyAgent {
       // Get probabilities as array for action selection
       const probabilities = probs.dataSync();
       
-      // Sample action (with exploration)
+      // Sample action from the policy distribution (categorical sampling)
       let actionIndex;
-      if (Math.random() < this.explorationRate) {
-        // Random exploration
-        actionIndex = Math.floor(Math.random() * 4);
-      } else {
-        // Use predicted action (highest probability)
-        let maxIndex = 0;
-        let maxProb = probabilities[0];
-        for (let i = 1; i < probabilities.length; i++) {
-          if (probabilities[i] > maxProb) {
-            maxProb = probabilities[i];
-            maxIndex = i;
-          }
+      {
+        const total = probabilities.reduce((s, p) => s + p, 0) || 1;
+        const normalized = Array.from(probabilities).map(p => (p < 0 ? 0 : p) / total);
+        const r = Math.random();
+        let cum = 0;
+        actionIndex = 0;
+        for (let i = 0; i < normalized.length; i++) {
+          cum += normalized[i];
+          if (r <= cum) { actionIndex = i; break; }
         }
-        actionIndex = maxIndex;
       }
       
-      // Get log probability of selected action
-      const logProbValue = logProbs.gather(actionIndex).dataSync()[0];
+      // Get log probability of selected action (gather along the action dimension)
+      const logProbValue = tf.squeeze(logProbs).gather(actionIndex).dataSync()[0];
       
       // Get value estimate if value model provided
       let value = 0;

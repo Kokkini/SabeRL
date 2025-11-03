@@ -425,31 +425,31 @@ export class TrainingSession {
       currentGameLength++;
       
       if (exp.done) {
-        // Game ended - determine outcome from the terminal reward
-        // When done=true, exp.reward contains the terminal reward (win/loss/tie)
-        // Win reward is 1.0, loss is -1.0, tie is 0.0 (from config)
-        // But it might have time penalties, so check the magnitude
-        const terminalReward = exp.reward;
+        // Game ended - determine outcome from outcome metadata when available
         let won = false;
         let isTie = false;
-        
-        // Determine outcome based on terminal reward
-        // Win: reward > 0 (typically 1.0, but may have small time penalties)
-        // Loss: reward < 0 (typically -1.0, but may have time penalties making it worse)
-        // Tie: reward close to 0
-        if (terminalReward > 0.3) {
-          // Positive reward = win (accounting for possible time penalties)
-          won = true;
-          wins++;
-        } else if (terminalReward < -0.3) {
-          // Negative reward = loss
-          won = false;
-          losses++;
+        if (exp.outcome) {
+          isTie = !!exp.outcome.isTie;
+          if (isTie) {
+            ties++;
+          } else if (exp.outcome.winnerId === 'player-1') {
+            won = true;
+            wins++;
+          } else {
+            losses++;
+          }
         } else {
-          // Close to zero = tie
-          won = false;
-          isTie = true;
-          ties++;
+          // Fallback to terminal reward threshold if outcome not provided
+          const terminalReward = exp.reward;
+          if (terminalReward > 0.3) {
+            won = true;
+            wins++;
+          } else if (terminalReward < -0.3) {
+            losses++;
+          } else {
+            isTie = true;
+            ties++;
+          }
         }
         
         // Update metrics with this game's result
@@ -581,9 +581,14 @@ export class TrainingSession {
             losses: rolloutStats.losses,
             ties: rolloutStats.ties,
             winRate: rolloutStats.winRate,
-            rewardStats: rolloutStats.rewardStats
+            rewardStats: rolloutStats.rewardStats,
+            // Policy entropy from trainer stats (per update)
+            policyEntropy: (this.trainer && this.trainer.getStats) ? (this.trainer.getStats().entropy || 0) : 0
           }
-        : this.trainingMetrics;
+        : {
+            ...this.trainingMetrics,
+            policyEntropy: (this.trainer && this.trainer.getStats) ? (this.trainer.getStats().entropy || 0) : 0
+          };
       
       // Call onTrainingProgress callback for UI updates
       if (this.onTrainingProgress) {

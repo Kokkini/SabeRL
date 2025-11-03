@@ -8,6 +8,10 @@ export class RolloutCollector {
     this.game = game;
     this.agent = agent;
     this.valueModel = valueModel;
+    // Ensure agent is active for rollouts so it does not return random actions
+    if (this.agent && typeof this.agent.activate === 'function') {
+      this.agent.activate();
+    }
     
     // Rollout configuration
     this.rolloutMaxLength = config.rolloutMaxLength || 2048;
@@ -60,6 +64,7 @@ export class RolloutCollector {
     let value = null;
     let logProb = null;
     let done = false;
+    let lastOutcome = null;
     let timeTillAction = 0;
     
     // Yield to event loop every N experiences to keep UI responsive
@@ -82,6 +87,9 @@ export class RolloutCollector {
         newObservation = result.observation;
         done = result.done;
         rewardDuringSkip += result.reward;
+        if (result.done && result.outcome) {
+          lastOutcome = result.outcome;
+        }
         timeTillAction -= this.deltaTime;
         
         if (done) break;
@@ -95,7 +103,8 @@ export class RolloutCollector {
         done: done,
         value: value,
         logProb: logProb,
-        nextValue: null // Will be set later
+        nextValue: null, // Will be set later
+        outcome: done ? lastOutcome : null
       };
       rolloutBuffer.push(experience);
       experienceCount++;

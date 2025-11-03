@@ -251,7 +251,7 @@ export const GameConfig = {
     gaeLambda: 0.95,           // GAE lambda parameter (typically 0.9-0.99)
     
     // Game settings
-    decisionInterval: 0.25, // seconds between AI decisions
+    decisionInterval: 0.2, // seconds between AI decisions
     parallelGames: 1,   // number of parallel training games
     
     // Training algorithms
@@ -277,7 +277,7 @@ export const GameConfig = {
       maxGameLength: 60,   // Max game length in seconds
       // distancePenaltyFactor: -1.0 // Per second penalty proportional to distance (distance * factor)
       distancePenaltyFactor: 0.0, // Per second penalty proportional to distance (distance * factor)
-      deltaDistanceRewardFactor: 10.0 // Per second reward for getting closer (deltaDistance * factor * deltaTime)
+      deltaDistanceRewardFactor: 2.0 // Per second reward for getting closer (deltaDistance * factor * deltaTime)
     },
 
     // Headless simulation tuning

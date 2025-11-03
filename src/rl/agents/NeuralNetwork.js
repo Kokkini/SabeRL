@@ -125,24 +125,15 @@ export class NeuralNetwork {
    * @returns {number} Selected action index
    */
   getActionIndex(probabilities) {
-    // Epsilon-greedy exploration
-    const explorationRate = 0.3; // Could be made configurable
-    if (Math.random() < explorationRate) {
-      // Random exploration
-      return Math.floor(Math.random() * probabilities.length);
-    }
-    
-    // Greedy selection
+    // Deterministic argmax for inference (AI Control)
     let maxIndex = 0;
     let maxProb = probabilities[0];
-    
     for (let i = 1; i < probabilities.length; i++) {
       if (probabilities[i] > maxProb) {
         maxProb = probabilities[i];
         maxIndex = i;
       }
     }
-    
     return maxIndex;
   }
 

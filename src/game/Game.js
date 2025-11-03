@@ -485,13 +485,25 @@ export class Game {
       }
     }
     
+    // Build outcome metadata for terminal transitions
+    let outcome = null;
+    if (done) {
+      const isTie = this.state === GameConfig.game.states.TIE;
+      let winnerId = null;
+      if (!isTie && this.winner) {
+        winnerId = this.winner.id || this.winner;
+      }
+      outcome = { isTie, winnerId };
+    }
+    
     // Return new observation
     const observation = this.createGameState(player);
     
     return {
       observation,
       done,
-      reward
+      reward,
+      outcome
     };
   }
 

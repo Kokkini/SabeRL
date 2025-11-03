@@ -295,12 +295,11 @@ export class PPOTrainer {
             .mul(this.options.valueLossCoeff);
         });
         
-        // Get value loss for statistics
+        // Get value loss for statistics (UNSCALED)
         const valueOutput = valueModel.predict(batch.states);
         const valueOutputSqueezed = valueOutput.squeeze();
         const returnsSqueezed = returns.squeeze();
-        valueLoss = this.computeValueLoss(valueOutputSqueezed, returnsSqueezed)
-          .mul(this.options.valueLossCoeff);
+        valueLoss = this.computeValueLoss(valueOutputSqueezed, returnsSqueezed);
       }
 
       // Update statistics (compute values for stats)
