@@ -125,16 +125,25 @@ export class NeuralNetwork {
    * @returns {number} Selected action index
    */
   getActionIndex(probabilities) {
-    // Deterministic argmax for inference (AI Control)
-    let maxIndex = 0;
-    let maxProb = probabilities[0];
-    for (let i = 1; i < probabilities.length; i++) {
-      if (probabilities[i] > maxProb) {
-        maxProb = probabilities[i];
-        maxIndex = i;
-      }
+    // Sample from the categorical distribution defined by probabilities
+    // Normalize in case of small numerical drift
+    let total = 0;
+    for (let i = 0; i < probabilities.length; i++) {
+      const p = probabilities[i];
+      total += (isFinite(p) && p > 0) ? p : 0;
     }
-    return maxIndex;
+    if (total <= 0) {
+      // Fallback to uniform random if invalid distribution
+      return Math.floor(Math.random() * probabilities.length);
+    }
+    const r = Math.random() * total;
+    let cumulative = 0;
+    for (let i = 0; i < probabilities.length; i++) {
+      const p = (isFinite(probabilities[i]) && probabilities[i] > 0) ? probabilities[i] : 0;
+      cumulative += p;
+      if (r < cumulative) return i;
+    }
+    return probabilities.length - 1;
   }
 
   /**

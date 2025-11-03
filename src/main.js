@@ -233,6 +233,13 @@ class SabeRLArena {
         this.start();
       });
     }
+
+    const resetScoreButton = document.getElementById('reset-score-button');
+    if (resetScoreButton) {
+      resetScoreButton.addEventListener('click', () => {
+        this.resetScores();
+      });
+    }
   }
 
   /**
@@ -424,6 +431,15 @@ class SabeRLArena {
       this.scores.ai++;
     }
     // Tie games don't update scores
+  }
+
+  /**
+   * Reset scores and update the scoreboard
+   */
+  resetScores() {
+    this.scores.player = 0;
+    this.scores.ai = 0;
+    this.updateScoreboard();
   }
 
   /**

@@ -211,7 +211,8 @@ export const GameConfig = {
       GAME_OVER: 'gameOver',
       TIE: 'tie'
     },
-    tieGameHandling: 'restart' // How to handle tie games: 'restart', 'continue', 'random'
+    tieGameHandling: 'restart', // How to handle tie games: 'restart', 'continue', 'random'
+    spawnMinDistance: 3 // Minimum distance between spawned entities (units)
   },
 
   // Performance settings
@@ -260,7 +261,7 @@ export const GameConfig = {
     // Performance settings
     maxMemoryUsage: 2 * 1024 * 1024 * 1024, // 2GB
     autoSaveInterval: 50, // Auto-save every N games
-    maxGames: 100000, // Maximum number of games to train for
+    maxGames: 10000, // Maximum number of games to train for
     performanceMonitoring: true,
     
     // UI settings
@@ -271,8 +272,8 @@ export const GameConfig = {
       win: 1.0,
       loss: -1.0,
       tie: 0.0,
-      // timePenalty: -0.01, // Per second penalty
-      timePenalty: 0.0, // Per second penalty
+      timePenalty: -0.05, // Per second penalty
+      // timePenalty: 0.0, // Per second penalty
       timePenaltyThreshold: 0, // Start applying time penalty after this many seconds
       maxGameLength: 60,   // Max game length in seconds
       // distancePenaltyFactor: -1.0 // Per second penalty proportional to distance (distance * factor)

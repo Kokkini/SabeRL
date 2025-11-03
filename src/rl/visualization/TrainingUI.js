@@ -157,7 +157,6 @@ export class TrainingUI {
           <button id="start-training" class="control-button">Start Training</button>
           <button id="pause-training" class="control-button" disabled>Pause</button>
           <button id="stop-training" class="control-button" disabled>Stop</button>
-          <button id="test-chart" class="control-button">Create Test Chart (20 Points)</button>
         </div>
         
         <div class="training-status">
@@ -237,7 +236,6 @@ export class TrainingUI {
     this.startButton = document.getElementById('start-training');
     this.pauseButton = document.getElementById('pause-training');
     this.stopButton = document.getElementById('stop-training');
-    this.testChartButton = document.getElementById('test-chart');
     this.progressBar = document.getElementById('progress-fill');
     this.chartContainer = document.getElementById('reward-chart');
     this.chartContainerDiv = document.getElementById('chart-container');
@@ -658,11 +656,7 @@ export class TrainingUI {
       });
     }
 
-    if (this.testChartButton) {
-      this.testChartButton.addEventListener('click', () => {
-        this.createTestChart();
-      });
-    }
+    // removed test chart button and handlers
   }
 
   /**
@@ -703,120 +697,7 @@ export class TrainingUI {
   }
 
   /**
-   * Force chart initialization (for debugging)
-   */
-  forceChartInitialization() {
-    console.log('Forcing chart initialization...');
-    console.log('Chart.js available:', typeof Chart === 'function');
-    console.log('Chart container:', this.chartContainer);
-    console.log('Chart container div:', this.chartContainerDiv);
-    
-    // Show the chart container for debugging
-    if (this.chartContainerDiv) {
-      this.chartContainerDiv.style.display = 'block';
-      console.log('Chart container made visible');
-    }
-    
-    const ChartConstructor = window.Chart || Chart;
-    if (typeof ChartConstructor === 'function' && this.chartContainer) {
-      this.initializeAllCharts();
-      console.log('Charts initialized - Reward:', !!this.chart, 'Game Length:', !!this.gameLengthChart, 'Win Rate:', !!this.winRateChart, 'Entropy:', !!this.entropyChart);
-    } else {
-      console.warn('Cannot initialize chart - Chart.js or container not available');
-      console.log('Chart.js type:', typeof Chart);
-      console.log('Chart container element:', this.chartContainer);
-      
-      // Try to wait for Chart.js to load
-      this.waitForChartJS();
-    }
-  }
-
-  /**
-   * Wait for Chart.js to load and then initialize chart
-   */
-  waitForChartJS() {
-    console.log('Waiting for Chart.js to load...');
-    let attempts = 0;
-    const maxAttempts = 20; // 10 seconds max
-    
-    const checkChartJS = () => {
-      attempts++;
-      console.log(`Checking for Chart.js (attempt ${attempts}/${maxAttempts})...`);
-      
-      const ChartConstructor = window.Chart || Chart;
-      if (typeof ChartConstructor === 'function') {
-        console.log('Chart.js loaded! Initializing chart...');
-        this.forceChartInitialization();
-      } else if (attempts < maxAttempts) {
-        setTimeout(checkChartJS, 500); // Check every 500ms
-      } else {
-        console.error('Chart.js failed to load after 10 seconds');
-        console.log('Available globals:', Object.keys(window).filter(key => key.toLowerCase().includes('chart')));
-        console.log('Window.Chart:', window.Chart);
-        console.log('Trying to load Chart.js manually...');
-        this.loadChartJSManually();
-      }
-    };
-    
-    checkChartJS();
-  }
-
-  /**
-   * Manually load Chart.js as a fallback
-   */
-  loadChartJSManually() {
-    console.log('Attempting to load Chart.js manually...');
-    
-    const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js';
-    script.onload = () => {
-      console.log('Chart.js loaded manually!');
-      setTimeout(() => {
-        this.forceChartInitialization();
-      }, 100);
-    };
-    script.onerror = () => {
-      console.error('Failed to load Chart.js manually');
-    };
-    
-    document.head.appendChild(script);
-  }
-
-  /**
-   * Add test data to chart for debugging
-   */
-  addTestData() {
-    if (!this.chart) {
-      console.error('Cannot add test data - chart not initialized');
-      return;
-    }
-    
-    console.log('Adding test data to chart...');
-    console.log('Chart data before:', this.chart.data);
-    
-    // Clear existing data and add test data directly to chart
-    this.chart.data.labels = [];
-    this.chart.data.datasets.forEach(dataset => {
-      dataset.data = [];
-    });
-    
-    // Add 20 static test data points
-    for (let i = 1; i <= 20; i++) {
-      this.chart.data.labels.push(`Point ${i}`);
-      this.chart.data.datasets[0].data.push(Math.sin(i * 0.3) * 2); // avg reward - sine wave
-      this.chart.data.datasets[1].data.push(Math.sin(i * 0.3) * 2 - 1); // min reward - sine wave offset down
-      this.chart.data.datasets[2].data.push(Math.sin(i * 0.3) * 2 + 1); // max reward - sine wave offset up
-    }
-    
-    console.log('Chart data after adding test data:', this.chart.data);
-    console.log('Labels:', this.chart.data.labels);
-    console.log('Dataset 0 data:', this.chart.data.datasets[0].data);
-    console.log('Dataset 1 data:', this.chart.data.datasets[1].data);
-    console.log('Dataset 2 data:', this.chart.data.datasets[2].data);
-    
-    this.chart.update();
-    console.log('Chart updated with test data - 20 points');
-  }
+  // removed test chart debug utilities (forceChartInitialization, waitForChartJS, loadChartJSManually, addTestData)
 
   /**
    * Start training
@@ -867,44 +748,19 @@ export class TrainingUI {
     
     // Initialize all charts if not already done
     if (!this.chart || !this.gameLengthChart || !this.winRateChart || !this.entropyChart || !this.policyLossChart || !this.valueLossChart) {
-      this.forceChartInitialization();
+      this.initializeAllCharts();
     }
   }
 
   /**
    * Show chart for testing (public method)
    */
-  showChart() {
-    console.log('Manually showing chart...');
-    this.forceChartInitialization();
-  }
+  // removed showChart()
 
   /**
    * Create a simple test chart with static data
    */
-  createTestChart() {
-    console.log('Creating test chart...');
-    
-    // Show chart container
-    if (this.chartContainerDiv) {
-      this.chartContainerDiv.style.display = 'block';
-    }
-    
-    // Initialize chart if not already done
-    if (!this.chart) {
-      this.forceChartInitialization();
-    }
-    
-    if (!this.chart) {
-      console.error('Failed to initialize chart for test');
-      return;
-    }
-    
-    // Add test data
-    this.addTestData();
-    
-    console.log('Test chart created successfully with 20 points');
-  }
+  // removed createTestChart()
 
   /**
    * Pause training

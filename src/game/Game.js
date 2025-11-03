@@ -96,8 +96,8 @@ export class Game {
     this.players = [];
     this.ais = [];
     
-    // Generate random positions with minimum distance
-    const positions = this.generateRandomPositions(2, 5); // 2 entities, 5 units minimum distance
+    // Generate random positions with minimum distance from config
+    const positions = this.generateRandomPositions(2, GameConfig.game.spawnMinDistance);
     
     // Create human player
     const player = new Player('player-1', positions[0]);
@@ -564,8 +564,8 @@ export class Game {
    * Reset all game entities
    */
   resetGameEntities() {
-    // Generate new random positions with minimum distance
-    const positions = this.generateRandomPositions(2, 5); // 2 entities, 5 units minimum distance
+    // Generate new random positions with minimum distance from config
+    const positions = this.generateRandomPositions(2, GameConfig.game.spawnMinDistance);
     
     // Reset players
     for (let i = 0; i < this.players.length; i++) {

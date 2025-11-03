@@ -148,6 +148,12 @@ main {
     flex-wrap: wrap;
 }
 
+/* Make RL Training box wider */
+#training-ui {
+    flex: 1 1 100%;
+    width: 100%;
+}
+
 .control-group {
     background: rgba(255, 255, 255, 0.1);
     padding: 20px;
@@ -425,6 +431,7 @@ footer {
     gap: 10px;
     margin-bottom: 15px;
     flex-wrap: wrap;
+    justify-content: center;
 }
 
 .training-status {
