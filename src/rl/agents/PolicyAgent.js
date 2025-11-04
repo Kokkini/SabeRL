@@ -102,10 +102,10 @@ export class PolicyAgent {
       // Get neural network prediction
       const prediction = this.neuralNetwork.predict(processedState);
       
-      // Use the neural network's prediction directly (it already handles exploration)
+      // Use the neural network's prediction directly (now multi-binary)
       const actionDecision = {
         action: prediction.action,
-        actionIndex: prediction.actionIndex,
+        actionMask: prediction.actionMask,
         confidence: prediction.confidence,
         probabilities: prediction.probabilities,
         method: 'neural_network',
@@ -114,17 +114,18 @@ export class PolicyAgent {
       
       // Collect experience if callback is provided
       if (this.onExperience) {
-        // Compute per-action log-prob from probabilities
+        // Compute summed Bernoulli log-prob over actions
         const probs = tf.tensor1d(prediction.probabilities, 'float32');
-        const logProbs = tf.log(probs.add(1e-8));
-        const actionIdx = actionDecision.actionIndex;
-        const logProbValue = logProbs.gather(actionIdx).dataSync()[0];
+        const mask = tf.tensor1d(actionDecision.actionMask.map(v => v ? 1 : 0), 'float32');
+        const logProbPerAction = mask.mul(tf.log(probs.add(1e-8)))
+          .add(tf.scalar(1).sub(mask).mul(tf.log(tf.scalar(1).sub(probs).add(1e-8))));
+        const logProbValue = logProbPerAction.sum().dataSync()[0];
         probs.dispose();
-        logProbs.dispose();
+        mask.dispose();
         
         this.onExperience({
           state: processedState,
-          action: actionDecision.actionIndex,
+          action: actionDecision.actionMask,
           reward: 0, // Will be updated later with actual reward
           isTerminal: false,
           logProb: logProbValue
@@ -134,9 +135,9 @@ export class PolicyAgent {
       // Create movement decision
       return new MovementDecision({
         action: actionDecision.action,
+        actionMask: actionDecision.actionMask,
         confidence: actionDecision.confidence,
         frameInterval: this.decisionIntervalSec,
-        actionIndex: actionDecision.actionIndex,
         probabilities: actionDecision.probabilities,
         timestamp: actionDecision.timestamp
       });
@@ -209,30 +210,17 @@ export class PolicyAgent {
       
       // Get raw logits from model
       const logits = this.neuralNetwork.model.predict(input);
-      
-      // Apply softmax to get probabilities
-      const probs = tf.softmax(logits);
-      const logProbs = tf.log(probs.add(1e-8));
-      
-      // Get probabilities as array for action selection
-      const probabilities = probs.dataSync();
-      
-      // Sample action from the policy distribution (categorical sampling)
-      let actionIndex;
-      {
-        const total = probabilities.reduce((s, p) => s + p, 0) || 1;
-        const normalized = Array.from(probabilities).map(p => (p < 0 ? 0 : p) / total);
-        const r = Math.random();
-        let cum = 0;
-        actionIndex = 0;
-        for (let i = 0; i < normalized.length; i++) {
-          cum += normalized[i];
-          if (r <= cum) { actionIndex = i; break; }
-        }
-      }
-      
-      // Get log probability of selected action (gather along the action dimension)
-      const logProbValue = tf.squeeze(logProbs).gather(actionIndex).dataSync()[0];
+      // Sigmoid for Bernoulli per action
+      const probs = tf.sigmoid(logits);
+      const probabilities = Array.from(probs.dataSync());
+      // Sample action mask via Bernoulli per action (allow zero-press)
+      const actionMask = probabilities.map(p => Math.random() < p);
+      // Sum Bernoulli log-prob
+      const probsT = tf.tensor1d(probabilities, 'float32');
+      const maskT = tf.tensor1d(actionMask.map(v => v ? 1 : 0), 'float32');
+      const logProbValue = maskT.mul(tf.log(probsT.add(1e-8)))
+        .add(tf.scalar(1).sub(maskT).mul(tf.log(tf.scalar(1).sub(probsT).add(1e-8))))
+        .sum().dataSync()[0];
       
       // Get value estimate if value model provided
       let value = 0;
@@ -246,20 +234,22 @@ export class PolicyAgent {
       input.dispose();
       logits.dispose();
       probs.dispose();
-      logProbs.dispose();
+      probsT.dispose();
+      maskT.dispose();
       
       return {
-        action: actionIndex,
+        action: actionMask,
         value: value,
         logProb: logProbValue
       };
     } catch (error) {
       console.error('Failed to act:', error);
       // Return random action as fallback
+      const mask = [Math.random()<0.5, Math.random()<0.5, Math.random()<0.5, Math.random()<0.5];
       return {
-        action: Math.floor(Math.random() * 4),
+        action: mask,
         value: 0,
-        logProb: Math.log(0.25)
+        logProb: -2.7726 // approx log((0.5)^4)
       };
     }
   }

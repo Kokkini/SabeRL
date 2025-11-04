@@ -336,7 +336,7 @@ export class Game {
    * @param {number} deltaTime - Time since last update in seconds
    * @returns {Object} {observation, done, reward}
    */
-  updateRollout(actionIndex, deltaTime) {
+  updateRollout(actionMask, deltaTime) {
     if (this.state !== GameConfig.game.states.PLAYING) {
       // Game already ended, return final state
       const player = this.getPlayer();
@@ -354,8 +354,8 @@ export class Game {
     // Apply action to player
     const player = this.getPlayer();
     if (player) {
-      player.applyActionByIndex(actionIndex);
-      
+      player.applyActionMask(actionMask);
+
       // Update player position
       const velocity = player.getVelocity();
       const newPosition = player.getPosition().clone().add(velocity.clone().multiplyScalar(deltaTime));

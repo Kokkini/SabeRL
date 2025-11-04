@@ -132,7 +132,7 @@ export class PPOTrainer {
       const state = exp.observation || exp.state;
       if (state && exp.action !== undefined) {
         states.push(state);
-        actions.push(exp.action);
+        actions.push(Array.isArray(exp.action) ? exp.action.map(v => v ? 1 : 0) : [exp.action===0,exp.action===1,exp.action===2,exp.action===3]);
         rewards.push(exp.reward || 0);
         oldLogProbs.push(exp.logProb || 0);
         values.push(exp.value || 0);
@@ -185,7 +185,7 @@ export class PPOTrainer {
 
     return {
       states: tf.tensor2d(statesArray, [statesArray.length, statesArray[0]?.length || 9]),
-      actions: tf.tensor1d(actions, 'int32'),
+      actions: tf.tensor2d(actions, [actions.length, 4], 'float32'),
       rewards: tf.tensor1d(rewards),
       oldLogProbs: tf.tensor1d(oldLogProbs),
       values: tf.tensor1d(values),
@@ -255,30 +255,29 @@ export class PPOTrainer {
       // console.log("batch.states", batch.states);
       // Get current policy predictions. batch.states is a tensor with shape [batchSize, 9]
       const policyOutput = policyModel.predict(batch.states);
-      
-      // Ensure policy output is float32
-      const policyOutputFloat = policyOutput.cast('float32');
-      const actionProbs = tf.softmax(policyOutputFloat);
+      // For Bernoulli, use logits -> sigmoid for probs
+      const logits = policyOutput.cast('float32');
+      const actionProbs = tf.sigmoid(logits);
       const logProbs = tf.log(actionProbs.add(1e-8));
 
       // Update policy model using minimize
       this.policyOptimizer.minimize(() => {
         // Recompute policy predictions inside gradient function
         const policyOutput = policyModel.predict(batch.states);
-        const policyOutputFloat = policyOutput.cast('float32');
-        const actionProbs = tf.softmax(policyOutputFloat);
+        const logits = policyOutput.cast('float32');
+        const actionProbs = tf.sigmoid(logits);
         const logProbs = tf.log(actionProbs.add(1e-8));
 
         // Compute policy loss (PPO clipped objective)
-        const policyLoss = this.computePolicyLoss(
-          logProbs,
+        const policyLoss = this.computePolicyLossBernoulli(
+          actionProbs,
           batch.oldLogProbs,
           batch.actions,
           normAdvantages
         );
 
         // Compute entropy bonus
-        const entropy = this.computeEntropy(actionProbs);
+        const entropy = this.computeEntropyBernoulli(actionProbs);
 
         // Total loss (only policy loss for policy model)
         return policyLoss.sub(entropy.mul(this.options.entropyCoeff));
@@ -304,20 +303,20 @@ export class PPOTrainer {
 
       // Update statistics (compute values for stats)
       const finalPolicyOutput = policyModel.predict(batch.states);
-      const finalPolicyOutputFloat = finalPolicyOutput.cast('float32');
-      const finalActionProbs = tf.softmax(finalPolicyOutputFloat);
+      const finalLogits = finalPolicyOutput.cast('float32');
+      const finalActionProbs = tf.sigmoid(finalLogits);
       const finalLogProbs = tf.log(finalActionProbs.add(1e-8));
-      const finalEntropy = this.computeEntropy(finalActionProbs);
+      const finalEntropy = this.computeEntropyBernoulli(finalActionProbs);
       
       // Compute policy loss for statistics
-      const finalPolicyLoss = this.computePolicyLoss(
-        finalLogProbs,
+      const finalPolicyLoss = this.computePolicyLossBernoulli(
+        finalActionProbs,
         batch.oldLogProbs,
         batch.actions,
         normAdvantages
       );
       
-      this.updateStats(finalPolicyLoss, valueLoss, finalEntropy, normAdvantages, finalLogProbs, batch.oldLogProbs, batch.actions);
+      this.updateStatsBernoulli(finalPolicyLoss, valueLoss, finalEntropy, normAdvantages, finalActionProbs, batch.oldLogProbs, batch.actions);
     });
   }
 
@@ -372,32 +371,16 @@ export class PPOTrainer {
    * @param {tf.Tensor} advantages - Computed advantages
    * @returns {tf.Tensor} Policy loss
    */
-  computePolicyLoss(logProbs, oldLogProbs, actions, advantages) {
-    // Get log probability of taken actions
-    // logProbs shape: [batchSize, 4], actions shape: [batchSize]
-    // Use oneHot to create mask and mul to select action log probabilities
-    const actionMask = tf.oneHot(actions.cast('int32'), 4);
-    const actionLogProbs = tf.sum(logProbs.mul(actionMask), 1);
-    
-    // Ensure oldLogProbs has the same shape as actionLogProbs
-    const oldActionLogProbs = oldLogProbs.squeeze();
-
-    // Compute probability ratio
-    const ratio = tf.exp(actionLogProbs.sub(oldActionLogProbs));
-
-    // Compute clipped objective
-    const clippedRatio = tf.clipByValue(
-      ratio,
-      1 - this.options.clipRatio,
-      1 + this.options.clipRatio
-    );
-
-    const clippedAdvantages = tf.minimum(
-      ratio.mul(advantages),
-      clippedRatio.mul(advantages)
-    );
-
-    return clippedAdvantages.neg().mean();
+  computePolicyLossBernoulli(actionProbs, oldLogProbs, actionMasks, advantages) {
+    // actionProbs shape: [B,4], actionMasks: [B,4] with 0/1
+    const eps = 1e-8;
+    const logP = tf.log(actionProbs.add(eps));
+    const log1mP = tf.log(tf.scalar(1).sub(actionProbs).add(eps));
+    const actionLogProbs = actionMasks.mul(logP).add(tf.scalar(1).sub(actionMasks).mul(log1mP)).sum(1);
+    const ratio = tf.exp(actionLogProbs.sub(oldLogProbs.squeeze()));
+    const clippedRatio = tf.clipByValue(ratio, 1 - this.options.clipRatio, 1 + this.options.clipRatio);
+    const clippedObj = tf.minimum(ratio.mul(advantages), clippedRatio.mul(advantages));
+    return clippedObj.neg().mean();
   }
 
   /**
@@ -415,11 +398,11 @@ export class PPOTrainer {
    * @param {tf.Tensor} probs - Action probabilities
    * @returns {tf.Tensor} Entropy
    */
-  computeEntropy(probs) {
-    // Ensure probs is float32
-    const probsFloat = probs.cast('float32');
-    const logProbs = tf.log(probsFloat.add(1e-8));
-    return probsFloat.mul(logProbs).sum(1).neg().mean();
+  computeEntropyBernoulli(probs) {
+    const eps = 1e-8;
+    const p = probs.cast('float32');
+    const term = p.mul(tf.log(p.add(eps))).add(tf.scalar(1).sub(p).mul(tf.log(tf.scalar(1).sub(p).add(eps))));
+    return term.sum(1).neg().mean();
   }
 
   /**
@@ -445,21 +428,17 @@ export class PPOTrainer {
    * @param {tf.Tensor} logProbs - Log probabilities
    * @param {tf.Tensor} oldLogProbs - Old log probabilities
    */
-  updateStats(policyLoss, valueLoss, entropy, advantages, logProbs, oldLogProbs, actions) {
+  updateStatsBernoulli(policyLoss, valueLoss, entropy, advantages, probs, oldLogProbs, actionMasks) {
     this.trainingStats.policyLoss = policyLoss.dataSync()[0];
     this.trainingStats.valueLoss = valueLoss.dataSync()[0];
     this.trainingStats.entropy = entropy.dataSync()[0];
-    
-    // Compute KL divergence using per-action log-probs
-    // KL(old || new) = mean(log_old - log_new) = mean(old - new)
-    // This is the standard KL divergence used in PPO for monitoring
-    const actionMask = tf.oneHot(actions.cast('int32'), 4);
-    const curActionLogProbs = tf.sum(logProbs.mul(actionMask), 1);
+    const eps = 1e-8;
+    const logP = tf.log(probs.add(eps));
+    const log1mP = tf.log(tf.scalar(1).sub(probs).add(eps));
+    const curActionLogProbs = actionMasks.mul(logP).add(tf.scalar(1).sub(actionMasks).mul(log1mP)).sum(1);
     const oldActionLogProbs = oldLogProbs.squeeze();
     const klDiv = oldActionLogProbs.sub(curActionLogProbs).mean();
-    this.trainingStats.klDivergence = Math.abs(klDiv.dataSync()[0]); // Use absolute value for monitoring
-    
-    // Compute clip fraction using per-action ratios
+    this.trainingStats.klDivergence = Math.abs(klDiv.dataSync()[0]);
     const ratio = tf.exp(curActionLogProbs.sub(oldActionLogProbs));
     const clipped = tf.clipByValue(ratio, 1 - this.options.clipRatio, 1 + this.options.clipRatio);
     const clipFraction = tf.notEqual(ratio, clipped).cast('float32').mean();

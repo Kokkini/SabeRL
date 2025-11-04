@@ -91,26 +91,27 @@ export class NeuralNetwork {
         throw new Error('Invalid game state format');
       }
       
-      // Get logits and convert to probabilities via softmax
-      const predictions = this.model.predict(input);
-      const probsTensor = tf.softmax(predictions);
-      const probabilities = probsTensor.dataSync();
+      // Get logits and convert to probabilities via sigmoid (independent Bernoulli per action)
+      const logits = this.model.predict(input);
+      const probsTensor = tf.sigmoid(logits);
+      const probabilities = Array.from(probsTensor.dataSync());
       
-      // Find best action
-      const actionIndex = this.getActionIndex(probabilities);
-      const action = this.indexToAction(actionIndex);
-      const confidence = probabilities[actionIndex];
+      // Sample multi-binary action mask via Bernoulli per action (allowing zero-press)
+      const actionMask = probabilities.map(p => Math.random() < p);
+      // Derive a representative action string (for legacy consumers) by priority W,A,S, D
+      const action = ['W','A','S','D'][actionMask.findIndex(v => v)] || 'W';
+      const confidence = 1.0; // not meaningful for multi-binary; keep for compatibility
       
       // Clean up tensors
       input.dispose();
-      predictions.dispose();
+      logits.dispose();
       probsTensor.dispose();
       
       return {
         action,
         confidence,
-        probabilities: Array.from(probabilities),
-        actionIndex
+        probabilities: probabilities,
+        actionMask
       };
     } catch (error) {
       console.error('Prediction failed:', error);

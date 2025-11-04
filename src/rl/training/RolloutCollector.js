@@ -73,7 +73,7 @@ export class RolloutCollector {
     while (rolloutBuffer.length < this.rolloutMaxLength) {
       // Get action from agent
       const agentResult = this.agent.act(observation, this.valueModel);
-      action = agentResult.action;
+      action = agentResult.action; // now an action mask [W,A,S,D]
       value = agentResult.value;
       logProb = agentResult.logProb;
       timeTillAction = this.actionIntervalSeconds;
@@ -98,7 +98,7 @@ export class RolloutCollector {
       // Store experience (will add nextValue later)
       const experience = {
         observation: observation,
-        action: action,
+        action: action, // store mask
         reward: rewardDuringSkip,
         done: done,
         value: value,

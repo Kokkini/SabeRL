@@ -134,20 +134,13 @@ export class Player {
     this.inputState.down = false;
     this.inputState.right = false;
     
-    // Set input based on decision
-    switch (decision.action) {
-      case 'W':
-        this.inputState.up = true;
-        break;
-      case 'A':
-        this.inputState.left = true;
-        break;
-      case 'S':
-        this.inputState.down = true;
-        break;
-      case 'D':
-        this.inputState.right = true;
-        break;
+    // Use multi-binary action mask (expected)
+    if (decision && decision.actionMask && decision.actionMask.length === 4) {
+      this.inputState.up = !!decision.actionMask[0];
+      this.inputState.left = !!decision.actionMask[1];
+      this.inputState.down = !!decision.actionMask[2];
+      this.inputState.right = !!decision.actionMask[3];
+      return;
     }
   }
 
@@ -179,6 +172,29 @@ export class Player {
       default:
         // No action (stay still)
         break;
+    }
+    
+    // Calculate movement vector and update velocity
+    const movementVector = this.calculateMovementVector();
+    this.velocity = movementVector.clone().multiplyScalar(this.movementSpeed);
+  }
+
+  /**
+   * Apply action by mask (for multi-binary actions)
+   * @param {Array<boolean|number>} actionMask - [W,A,S,D] booleans/0-1
+   */
+  applyActionMask(actionMask) {
+    // Reset input state
+    this.inputState.up = false;
+    this.inputState.left = false;
+    this.inputState.down = false;
+    this.inputState.right = false;
+    
+    if (Array.isArray(actionMask) && actionMask.length === 4) {
+      this.inputState.up = !!actionMask[0];
+      this.inputState.left = !!actionMask[1];
+      this.inputState.down = !!actionMask[2];
+      this.inputState.right = !!actionMask[3];
     }
     
     // Calculate movement vector and update velocity

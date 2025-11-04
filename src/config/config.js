@@ -105,7 +105,7 @@ export function applyDefaults(config) {
       learningRate: 0.001,
       explorationRate: 0.1,
       discountFactor: 0.99,
-      decisionInterval: 4,
+      decisionInterval: 0.2,
       parallelGames: 10,
       algorithm: 'PPO',
       maxMemoryUsage: 2 * 1024 * 1024 * 1024,
@@ -254,6 +254,7 @@ export const GameConfig = {
     // Game settings
     decisionInterval: 0.2, // seconds between AI decisions
     parallelGames: 1,   // number of parallel training games
+    actionThreshold: 0.5, // threshold for multi-binary action (sigmoid > threshold => key pressed)
     
     // Training algorithms
     algorithm: 'PPO', // Only PPO is supported

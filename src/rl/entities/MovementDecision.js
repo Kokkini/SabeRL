@@ -6,11 +6,11 @@
 export class MovementDecision {
   constructor(data = {}) {
     this.action = data.action || 'W';
+    this.actionMask = Array.isArray(data.actionMask) ? data.actionMask.slice(0, 4) : [false, false, false, false];
     this.confidence = data.confidence || 0.5;
     this.timestamp = data.timestamp || Date.now();
     this.frameInterval = data.frameInterval || 4;
-    this.actionIndex = data.actionIndex || 0;
-    this.probabilities = data.probabilities || [0.25, 0.25, 0.25, 0.25];
+    this.probabilities = data.probabilities || [0.5, 0.5, 0.5, 0.5];
     
     this.validate();
   }
@@ -20,12 +20,10 @@ export class MovementDecision {
    * @throws {Error} If validation fails
    */
   validate() {
-    const validActions = ['W', 'A', 'S', 'D'];
-    
-    if (!validActions.includes(this.action)) {
-      throw new Error(`Invalid action: ${this.action}. Must be one of: ${validActions.join(', ')}`);
+    // Accept any action string for legacy, but require a valid mask
+    if (!Array.isArray(this.actionMask) || this.actionMask.length !== 4) {
+      throw new Error('actionMask must be an array of 4 booleans');
     }
-    
     if (this.confidence < 0 || this.confidence > 1) {
       throw new Error(`Invalid confidence: ${this.confidence}. Must be in range [0, 1]`);
     }
@@ -33,19 +31,10 @@ export class MovementDecision {
     if (this.frameInterval <= 0) {
       throw new Error(`Invalid frame interval: ${this.frameInterval}. Must be positive`);
     }
-    
-    if (this.actionIndex < 0 || this.actionIndex > 3) {
-      throw new Error(`Invalid action index: ${this.actionIndex}. Must be in range [0, 3]`);
-    }
-    
     if (!Array.isArray(this.probabilities) || this.probabilities.length !== 4) {
       throw new Error('Probabilities must be an array of 4 elements');
     }
-    
-    const sum = this.probabilities.reduce((a, b) => a + b, 0);
-    if (Math.abs(sum - 1.0) > 0.001) {
-      throw new Error(`Probabilities must sum to 1.0, got: ${sum}`);
-    }
+    // No requirement to sum to 1 for independent Bernoulli
   }
 
   /**
@@ -159,10 +148,10 @@ export class MovementDecision {
   toObject() {
     return {
       action: this.action,
+      actionMask: [...this.actionMask],
       confidence: this.confidence,
       timestamp: this.timestamp,
       frameInterval: this.frameInterval,
-      actionIndex: this.actionIndex,
       probabilities: [...this.probabilities]
     };
   }
@@ -185,9 +174,9 @@ export class MovementDecision {
   static fromNeuralNetworkOutput(nnOutput, frameInterval = 4) {
     return new MovementDecision({
       action: nnOutput.action,
+      actionMask: nnOutput.actionMask,
       confidence: nnOutput.confidence,
       frameInterval: frameInterval,
-      actionIndex: nnOutput.actionIndex,
       probabilities: nnOutput.probabilities
     });
   }
@@ -198,15 +187,13 @@ export class MovementDecision {
    * @returns {MovementDecision} Random decision
    */
   static random(frameInterval = 4) {
-    const actions = ['W', 'A', 'S', 'D'];
-    const randomIndex = Math.floor(Math.random() * actions.length);
-    
+    const mask = [Math.random()<0.5, Math.random()<0.5, Math.random()<0.5, Math.random()<0.5];
     return new MovementDecision({
-      action: actions[randomIndex],
-      confidence: 0.25,
+      action: ['W','A','S','D'][mask.findIndex(v=>v)],
+      actionMask: mask,
+      confidence: 0.5,
       frameInterval: frameInterval,
-      actionIndex: randomIndex,
-      probabilities: [0.25, 0.25, 0.25, 0.25]
+      probabilities: [0.5, 0.5, 0.5, 0.5]
     });
   }
 
@@ -217,22 +204,14 @@ export class MovementDecision {
    * @returns {MovementDecision} Greedy decision
    */
   static greedy(probabilities, frameInterval = 4) {
-    const actions = ['W', 'A', 'S', 'D'];
-    let maxIndex = 0;
-    let maxProb = probabilities[0];
-    
-    for (let i = 1; i < probabilities.length; i++) {
-      if (probabilities[i] > maxProb) {
-        maxProb = probabilities[i];
-        maxIndex = i;
-      }
-    }
-    
+    // For Bernoulli heads, greedy becomes thresholding
+    const mask = probabilities.map(p => p > 0.5);
+    if (!mask.some(Boolean)) mask[probabilities.indexOf(Math.max(...probabilities))] = true;
     return new MovementDecision({
-      action: actions[maxIndex],
-      confidence: maxProb,
+      action: ['W','A','S','D'][mask.findIndex(v=>v)],
+      actionMask: mask,
+      confidence: 1.0,
       frameInterval: frameInterval,
-      actionIndex: maxIndex,
       probabilities: [...probabilities]
     });
   }
@@ -244,10 +223,10 @@ export class MovementDecision {
   clone() {
     return new MovementDecision({
       action: this.action,
+      actionMask: [...this.actionMask],
       confidence: this.confidence,
       timestamp: this.timestamp,
       frameInterval: this.frameInterval,
-      actionIndex: this.actionIndex,
       probabilities: [...this.probabilities]
     });
   }
@@ -257,6 +236,6 @@ export class MovementDecision {
    * @returns {string} String representation
    */
   toString() {
-    return `MovementDecision(action=${this.action}, confidence=${this.confidence.toFixed(3)}, interval=${this.frameInterval})`;
+    return `MovementDecision(mask=${JSON.stringify(this.actionMask)}, interval=${this.frameInterval})`;
   }
 }
