@@ -4,10 +4,11 @@
  */
 
 export class RolloutCollector {
-  constructor(core, agent, valueModel, config = {}) {
+  constructor(core, agent, valueModel, config = {}, hooks = {}) {
     this.core = core;
     this.agent = agent;
     this.valueModel = valueModel;
+    this.hooks = hooks || {};
     // Ensure agent is active for rollouts so it does not return random actions
     if (this.agent && typeof this.agent.activate === 'function') {
       this.agent.activate();
@@ -60,6 +61,11 @@ export class RolloutCollector {
   async collectRollout() {
     const rolloutBuffer = [];
     let observation = this.core.reset();
+    // Sample opponent for this episode, if hook provided
+    if (typeof this.hooks.sampleOpponent === 'function') {
+      const controller = this.hooks.sampleOpponent();
+      try { this.core.setOpponentController(controller || null); } catch (_) {}
+    }
     let action = null;
     let value = null;
     let logProb = null;
@@ -115,6 +121,11 @@ export class RolloutCollector {
       // If game ended, restart
       if (done) {
         observation = this.core.reset();
+        // New episode: re-sample opponent
+        if (typeof this.hooks.sampleOpponent === 'function') {
+          const controller = this.hooks.sampleOpponent();
+          try { this.core.setOpponentController(controller || null); } catch (_) {}
+        }
         done = false;
       }
       

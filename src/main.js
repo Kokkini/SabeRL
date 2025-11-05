@@ -14,6 +14,8 @@ import { PolicyAgent } from './rl/agents/PolicyAgent.js';
 import { NeuralNetwork } from './rl/agents/NeuralNetwork.js';
 import { TrainingSession } from './rl/training/TrainingSession.js';
 import { TrainingUI } from './rl/visualization/TrainingUI.js';
+import { OpponentPolicyManager } from './rl/utils/OpponentPolicyManager.js';
+import { PolicyOpponentController } from './game/controllers/PolicyOpponentController.js';
 
 /**
  * Main game class that manages the entire application
@@ -40,6 +42,9 @@ class SabeRLArena {
     // Training state
     this.trainingSession = null;
     this.trainingUI = null;
+
+    // Opponent configuration
+    this.opponentManager = null;
   }
 
   /**
@@ -114,6 +119,9 @@ class SabeRLArena {
 
       // Initialize training system
       this.initializeTraining();
+
+      // Initialize opponent manager
+      this.opponentManager = new OpponentPolicyManager();
 
       // Initialize scoreboard
       this.updateScoreboard();
@@ -295,6 +303,8 @@ class SabeRLArena {
 
       // Reset core state and start loop
       const initialObservation = this.core.reset();
+      // Sample and set opponent controller for this game
+      this.applyOpponentSelection();
       if (this.gameLoop && typeof this.gameLoop.setInitialObservation === 'function') {
         this.gameLoop.setInitialObservation(initialObservation);
       }
@@ -318,6 +328,34 @@ class SabeRLArena {
     const statusElement = document.getElementById('game-status');
     if (statusElement) {
       statusElement.textContent = 'Game Running';
+    }
+  }
+
+  /**
+   * Sample opponent option and apply controller to core
+   */
+  applyOpponentSelection() {
+    try {
+      if (!this.core) return;
+      if (this.opponentManager && typeof this.opponentManager.load === 'function') {
+        // Refresh options from storage in case UI changed them
+        this.opponentManager.load();
+      }
+      const selection = this.opponentManager ? this.opponentManager.sample() : { type: 'random' };
+      if (selection.type === 'policy' && selection.agent) {
+        // Align decision interval with gameplay cadence
+        selection.agent.decisionIntervalSec = GameConfig.rl.decisionInterval;
+        const controller = new PolicyOpponentController(selection.agent);
+        this.core.setOpponentController(controller);
+        console.log(`Opponent set to policy: ${selection.label}`);
+      } else {
+        // Use built-in random AI
+        this.core.setOpponentController(null);
+        console.log('Opponent set to random');
+      }
+    } catch (e) {
+      console.warn('Failed to apply opponent selection, falling back to random', e);
+      try { this.core.setOpponentController(null); } catch(_) {}
     }
   }
 

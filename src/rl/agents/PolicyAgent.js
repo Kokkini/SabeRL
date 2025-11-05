@@ -309,7 +309,7 @@ export class PolicyAgent {
     this.isActive = true;
     this.decisionFrameCount = 0;
     this.currentDecision = null;
-    console.log(`PolicyAgent ${this.id} activated`);
+    // console.log(`PolicyAgent ${this.id} activated`);
   }
 
   /**
@@ -319,7 +319,7 @@ export class PolicyAgent {
     this.isActive = false;
     this.currentDecision = null;
     this.decisionFrameCount = 0;
-    console.log(`PolicyAgent ${this.id} deactivated`);
+    // console.log(`PolicyAgent ${this.id} deactivated`);
   }
 
   /**

@@ -11,6 +11,8 @@ import { ModelManager } from '../utils/ModelManager.js';
 import { PPOTrainer } from './PPOTrainer.js';
 import { RolloutCollector } from './RolloutCollector.js';
 import { GameCore } from '../../game/GameCore.js';
+import { OpponentPolicyManager } from '../utils/OpponentPolicyManager.js';
+import { PolicyOpponentController } from '../../game/controllers/PolicyOpponentController.js';
 
 export class TrainingSession {
   constructor(game, options = {}) {
@@ -61,6 +63,9 @@ export class TrainingSession {
     this.algorithm = GameConfig.rl.algorithm;
     this.trainer = null;
     this.valueModel = null;
+
+    // Opponent manager for rollouts
+    this.opponentManager = new OpponentPolicyManager();
 
     // Old parallel training removed - using rollout system instead
   }
@@ -160,6 +165,18 @@ export class TrainingSession {
           deltaTime: rolloutConfig.deltaTime,
           actionIntervalSeconds: rolloutConfig.actionIntervalSeconds,
           yieldInterval: rolloutConfig.yieldInterval || 50
+        },
+        {
+          sampleOpponent: () => {
+            // Refresh from storage before sampling to reflect UI changes
+            try { this.opponentManager.load(); } catch (_) {}
+            const sel = this.opponentManager.sample();
+            if (sel.type === 'policy' && sel.agent) {
+              sel.agent.decisionIntervalSec = rolloutConfig.actionIntervalSeconds;
+              return new PolicyOpponentController(sel.agent);
+            }
+            return null; // null => random AI
+          }
         }
       );
       

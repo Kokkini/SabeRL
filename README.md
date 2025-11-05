@@ -66,6 +66,16 @@
 - Persistence and Model Management:
   - Auto‑save/load current model via LocalStorage + IndexedDB backup.
   - Manual Export/Import of agent weights (policy + value) to/from a JSON file, enabling session continuity.
+  - Opponent configuration: weighted selection across Random and multiple uploaded policy opponents; sampling occurs at game start/episode reset (visible and rollouts).
+  
+- Opponent Policies (Multi‑Policy, Weighted):
+  - Configure the opponent as a weighted mixture of options:
+    - Random (default) – existing non‑learning AI.
+    - One or more uploaded policy opponents (JSON bundle exported via Export Weights).
+  - Sampling happens at episode boundaries (game start in visible play; reset in rollouts).
+  - Defaults: Random has weight 1 on first load; no policy options present.
+  - Perspective: opponent policies receive a swapped observation (opponent‑as‑player) so player‑trained features apply.
+  - Performance: policy opponents use a decision interval to avoid per‑frame inference; action masks are reused between updates.
 
 - Performance and UX:
   - Smart yielding via MessageChannel/setTimeout to keep UI responsive in visible/hidden tabs.

@@ -4,6 +4,7 @@
  */
 
 import { GameConfig } from '../../config/config.js';
+import { OpponentPolicyManager } from '../utils/OpponentPolicyManager.js';
 
 export class TrainingUI {
   constructor(containerId = 'training-ui') {
@@ -116,6 +117,11 @@ export class TrainingUI {
     this.exportButton = null;
     this.importButton = null;
     this.importFileInput = null;
+
+    // Opponent settings
+    this.opponentManager = new OpponentPolicyManager();
+    this.oppListContainer = null;
+    this.oppUploadInput = null;
   }
 
   /**
@@ -182,6 +188,16 @@ export class TrainingUI {
           </div>
         </div>
         
+        <div class="opponent-config">
+          <h4>Opponent Settings</h4>
+          <div id="opp-options-list"></div>
+          <div style="margin-top:8px;">
+            <button id="opp-add-policy" class="control-button">Add Policy (Upload JSON)</button>
+            <input id="opp-upload-input" type="file" accept="application/json" style="display:none" />
+            <button id="opp-reset" class="control-button">Reset to Random</button>
+          </div>
+        </div>
+
         <div class="progress-container">
           <div class="progress-label">Training Progress</div>
           <div class="progress-bar">
@@ -266,6 +282,11 @@ export class TrainingUI {
     
     // Don't initialize chart until training starts
     // this.initializeChart();
+
+    // Opponent settings refs
+    this.oppListContainer = document.getElementById('opp-options-list');
+    this.oppUploadInput = document.getElementById('opp-upload-input');
+    this.renderOpponentOptions();
   }
 
   /**
@@ -688,6 +709,69 @@ export class TrainingUI {
     }
 
     // removed test chart button and handlers
+
+    // Opponent settings
+    const oppAddBtn = document.getElementById('opp-add-policy');
+    const oppResetBtn = document.getElementById('opp-reset');
+    if (oppAddBtn && this.oppUploadInput) {
+      oppAddBtn.addEventListener('click', () => this.oppUploadInput.click());
+      this.oppUploadInput.addEventListener('change', async (e) => {
+        const f = e.target.files && e.target.files[0];
+        if (!f) return;
+        try {
+          const text = await f.text();
+          const bundle = JSON.parse(text);
+          this.opponentManager.addPolicy(f.name.replace(/\.json$/i, ''), bundle);
+          this.renderOpponentOptions();
+        } catch (err) {
+          console.error('Invalid opponent policy JSON', err);
+        } finally {
+          this.oppUploadInput.value = '';
+        }
+      });
+    }
+    if (oppResetBtn) {
+      oppResetBtn.addEventListener('click', () => {
+        this.opponentManager.resetToDefault();
+        this.renderOpponentOptions();
+      });
+    }
+  }
+
+  renderOpponentOptions() {
+    if (!this.oppListContainer) return;
+    const opts = this.opponentManager.getOptions();
+    const html = [`<table style="width:100%; font-size:12px;"><thead><tr><th style="text-align:left;">Label</th><th>Type</th><th>Weight</th><th></th></tr></thead><tbody>`];
+    for (const o of opts) {
+      html.push(
+        `<tr>
+          <td>${o.label}</td>
+          <td>${o.type}</td>
+          <td><input data-opp-id="${o.id}" class="opp-weight" type="number" min="0" step="1" value="${Number(o.weight)||0}" style="width:64px;" /></td>
+          <td>${o.id==='random'?'':`<button data-del-id="${o.id}" class="control-button">Delete</button>`}</td>
+        </tr>`
+      );
+    }
+    html.push('</tbody></table>');
+    this.oppListContainer.innerHTML = html.join('');
+
+    // Bind events
+    const weightInputs = this.oppListContainer.querySelectorAll('input.opp-weight');
+    weightInputs.forEach(inp => {
+      inp.addEventListener('change', (e) => {
+        const id = e.target.getAttribute('data-opp-id');
+        const val = e.target.value;
+        this.opponentManager.updateWeight(id, Number(val));
+      });
+    });
+    const deleteBtns = this.oppListContainer.querySelectorAll('button[data-del-id]');
+    deleteBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-del-id');
+        this.opponentManager.removeOption(id);
+        this.renderOpponentOptions();
+      });
+    });
   }
 
   async handleExportWeights() {

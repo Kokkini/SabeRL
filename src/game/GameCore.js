@@ -20,6 +20,9 @@ export class GameCore {
     this.startTimeMs = 0;
     this.endTimeMs = 0;
     this.previousDistance = null;
+
+    // Optional opponent controller (when using policy-driven opponent)
+    this.opponentController = null;
   }
 
   reset() {
@@ -87,11 +90,19 @@ export class GameCore {
       player.setDesiredActionMask(actionMask);
     }
 
-    // Advance physics: move player from desiredActionMask, update sabers, update AI
+    // Advance physics: move player from desiredActionMask, update sabers, update AI/opponent
     this.#updatePlayerFromMask(player, deltaTime);
     if (player?.saber) player.saber.update(deltaTime);
-    for (const ai of this.ais) {
-      ai.update(deltaTime);
+    // Opponent control: if a controller is present, use its decision; otherwise run built-in AI
+    if (this.opponentController && this.ais[0]) {
+      const obs = this.#buildObservation();
+      const oppMask = this.opponentController.decide(obs, deltaTime) || [false,false,false,false];
+      this.#updateOpponentFromMask(this.ais[0], deltaTime, oppMask);
+      if (this.ais[0]?.saber) this.ais[0].saber.update(deltaTime);
+    } else {
+      for (const ai of this.ais) {
+        ai.update(deltaTime);
+      }
     }
 
     // Collisions
@@ -125,6 +136,10 @@ export class GameCore {
 
     const observation = this.#buildObservation();
     return { observation, reward, done, outcome };
+  }
+
+  setOpponentController(controller) {
+    this.opponentController = controller || null;
   }
 
   // Internal methods
@@ -181,6 +196,29 @@ export class GameCore {
     const constrained = this.arena.constrainPosition(newX, newY, player.radius);
     player.position.x = constrained.x;
     player.position.y = constrained.y;
+  }
+
+  #updateOpponentFromMask(opponent, deltaTime, mask) {
+    if (!opponent || !opponent.isAlive) return;
+    const up = mask[0] ? -1 : 0;
+    const left = mask[1] ? -1 : 0;
+    const down = mask[2] ? 1 : 0;
+    const right = mask[3] ? 1 : 0;
+    let dx = left + right;
+    let dy = up + down;
+    const len = Math.hypot(dx, dy) || 1;
+    dx /= len;
+    dy /= len;
+    const speed = opponent.movementSpeed ?? (this.config?.ai?.movementSpeed ?? 50);
+    const vx = dx * speed;
+    const vy = dy * speed;
+    opponent.velocity.x = vx;
+    opponent.velocity.y = vy;
+    const newX = opponent.position.x + vx * deltaTime;
+    const newY = opponent.position.y + vy * deltaTime;
+    const constrained = this.arena.constrainPosition(newX, newY, opponent.radius);
+    opponent.position.x = constrained.x;
+    opponent.position.y = constrained.y;
   }
 
   #computeTerminalReward({ tie, winnerId }) {
