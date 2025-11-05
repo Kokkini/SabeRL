@@ -688,6 +688,78 @@ export class TrainingSession {
   }
 
   /**
+   * Export both policy and value network weights to a serializable object
+   * @returns {Object} Export bundle
+   */
+  exportAgentWeights() {
+    if (!this.policyAgent || !this.policyAgent.neuralNetwork || !this.valueModel) {
+      throw new Error('Networks are not initialized');
+    }
+
+    const bundle = {
+      version: '1.0.0',
+      createdAt: new Date().toISOString(),
+      algorithm: this.algorithm,
+      rlConfig: {
+        hiddenLayers: GameConfig.rl.hiddenLayers,
+        inputSize: 9,
+        policyOutputSize: 4,
+        valueOutputSize: 1
+      },
+      policy: this.policyAgent.neuralNetwork.serialize(),
+      value: this.valueModel.serialize()
+    };
+
+    return bundle;
+  }
+
+  /**
+   * Import both policy and value networks from a serialized bundle
+   * @param {Object} bundle - Object previously produced by exportAgentWeights()
+   */
+  async importAgentWeights(bundle) {
+    if (!bundle || typeof bundle !== 'object') {
+      throw new Error('Invalid weights bundle');
+    }
+
+    // Basic validation
+    if (!bundle.policy || !bundle.value) {
+      throw new Error('Bundle missing policy or value weights');
+    }
+
+    // Rebuild networks
+    const newPolicy = NeuralNetwork.fromSerialized(bundle.policy);
+    const newValue = NeuralNetwork.fromSerialized(bundle.value);
+
+    // Optional: validate expected shapes
+    const policyOk = newPolicy.architecture.inputSize === 9 && newPolicy.architecture.outputSize === 4;
+    const valueOk = newValue.architecture.inputSize === 9 && newValue.architecture.outputSize === 1;
+    if (!policyOk || !valueOk) {
+      console.warn('Imported network architectures differ from expected (input=9, policy out=4, value out=1). Proceeding anyway.');
+    }
+
+    // Swap into session
+    if (this.policyAgent && this.policyAgent.neuralNetwork) {
+      this.policyAgent.neuralNetwork.dispose();
+    }
+    this.policyAgent.neuralNetwork = newPolicy;
+
+    if (this.valueModel) {
+      this.valueModel.dispose();
+    }
+    this.valueModel = newValue;
+
+    // Update rollout collectors to reference the new value model
+    if (Array.isArray(this.rolloutCollectors)) {
+      for (const collector of this.rolloutCollectors) {
+        collector.valueModel = this.valueModel.model;
+      }
+    }
+
+    console.log('Imported agent weights applied');
+  }
+
+  /**
    * Get training status
    * @returns {Object} Training status
    */

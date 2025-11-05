@@ -111,6 +111,11 @@ export class TrainingUI {
     
     // Track batch number for chart updates (increments after each experience collection phase)
     this.batchNumber = 0;
+
+    // Export/Import elements
+    this.exportButton = null;
+    this.importButton = null;
+    this.importFileInput = null;
   }
 
   /**
@@ -157,6 +162,9 @@ export class TrainingUI {
           <button id="start-training" class="control-button">Start Training</button>
           <button id="pause-training" class="control-button" disabled>Pause</button>
           <button id="stop-training" class="control-button" disabled>Stop</button>
+          <button id="export-weights" class="control-button">Export Weights</button>
+          <button id="import-weights" class="control-button">Import Weights</button>
+          <input id="import-weights-file" type="file" accept="application/json" style="display:none" />
         </div>
         
         <div class="training-status">
@@ -236,6 +244,9 @@ export class TrainingUI {
     this.startButton = document.getElementById('start-training');
     this.pauseButton = document.getElementById('pause-training');
     this.stopButton = document.getElementById('stop-training');
+    this.exportButton = document.getElementById('export-weights');
+    this.importButton = document.getElementById('import-weights');
+    this.importFileInput = document.getElementById('import-weights-file');
     this.progressBar = document.getElementById('progress-fill');
     this.chartContainer = document.getElementById('reward-chart');
     this.chartContainerDiv = document.getElementById('chart-container');
@@ -656,7 +667,66 @@ export class TrainingUI {
       });
     }
 
+    if (this.exportButton) {
+      this.exportButton.addEventListener('click', async () => {
+        await this.handleExportWeights();
+      });
+    }
+
+    if (this.importButton && this.importFileInput) {
+      this.importButton.addEventListener('click', () => {
+        this.importFileInput.click();
+      });
+      this.importFileInput.addEventListener('change', async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (file) {
+          await this.handleImportWeights(file);
+          // reset input so same file can be selected again later
+          this.importFileInput.value = '';
+        }
+      });
+    }
+
     // removed test chart button and handlers
+  }
+
+  async handleExportWeights() {
+    try {
+      if (!this.trainingSession) {
+        console.error('No training session available');
+        return;
+      }
+      const bundle = this.trainingSession.exportAgentWeights();
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      a.href = url;
+      a.download = `saberl-agent-${stamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      console.log('Agent weights exported');
+    } catch (err) {
+      console.error('Failed to export weights:', err);
+    }
+  }
+
+  async handleImportWeights(file) {
+    try {
+      if (!this.trainingSession) {
+        console.error('No training session available');
+        return;
+      }
+      const text = await file.text();
+      const bundle = JSON.parse(text);
+      await this.trainingSession.importAgentWeights(bundle);
+      console.log('Agent weights imported');
+      // Keep UI state; if training is active, continue with new weights
+    } catch (err) {
+      console.error('Failed to import weights:', err);
+    }
   }
 
   /**

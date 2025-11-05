@@ -247,7 +247,13 @@ export class NeuralNetwork {
    */
   serialize() {
     const weights = this.getWeights();
-    const serializedWeights = weights ? weights.map(w => Array.from(w.dataSync())) : null;
+    const serializedWeights = weights
+      ? weights.map(w => ({
+          data: Array.from(w.dataSync()),
+          shape: w.shape,
+          dtype: w.dtype
+        }))
+      : null;
     
     return {
       id: this.id,
@@ -274,8 +280,8 @@ export class NeuralNetwork {
     network.lastTrained = data.lastTrained ? new Date(data.lastTrained) : null;
     
     if (data.weights) {
-      // Convert serialized weights back to tensors
-      const weights = data.weights.map(w => tf.tensor(w));
+      // Convert serialized weights back to tensors using stored shape and dtype
+      const weights = data.weights.map(w => tf.tensor(w.data, w.shape, w.dtype));
       network.setWeights(weights);
     }
     

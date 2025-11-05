@@ -40,3 +40,38 @@
         ```
 - The main training thread will wait until all rollouts finish then do PPO training on all rollout experiences.
 - After this training step, start new rollouts on all workers with the latest weight
+
+## Game Features
+
+- Gameplay and Controls:
+  - Top‑down arena with player and AI sabers, movement on a 2D canvas.
+  - Human control with WASD; toggleable AI control for the player.
+  - Start/Pause/Stop of the visible game loop; scoreboard for Player vs AI.
+
+- AI and Neural Networks:
+  - Policy agent powered by TensorFlow.js with configurable hidden layers.
+  - Separate policy (action logits for W/A/S/D via sigmoid) and value (state‑value) networks.
+  - Game state processing includes positions, angles, velocities, and distances (9‑dim observations).
+
+- Training (PPO):
+  - PPO updates with GAE advantages, clipping, entropy bonus, minibatches, and epochs.
+  - Parallel rollout collection across multiple headless games.
+  - Rollouts aggregate rewards during action hold intervals for efficient simulation.
+
+- Training UI:
+  - Start/Pause/Stop training controls.
+  - Live metrics and charts: reward (avg/min/max), win/loss/tie rate, average game length, entropy, policy loss, value loss.
+  - Progress indicator and training status updates.
+
+- Persistence and Model Management:
+  - Auto‑save/load current model via LocalStorage + IndexedDB backup.
+  - Manual Export/Import of agent weights (policy + value) to/from a JSON file, enabling session continuity.
+
+- Performance and UX:
+  - Smart yielding via MessageChannel/setTimeout to keep UI responsive in visible/hidden tabs.
+  - Renderer uses a pixel‑art style with disabled image smoothing for crisp visuals.
+
+- Tech Stack:
+  - JavaScript (modules) + Canvas 2D for rendering.
+  - TensorFlow.js for neural networks and optimization.
+  - Chart.js for visualization.
