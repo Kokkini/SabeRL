@@ -143,8 +143,8 @@ function mergeDeep(target, source) {
 export const GameConfig = {
   // Arena settings
   arena: {
-    width: 8,        // Arena width in units
-    height: 8,       // Arena height in units
+    width: 12,        // Arena width in units
+    height: 12,       // Arena height in units
     backgroundColor: '#1a1a1a',
     borderColor: '#ffffff',
     borderWidth: 2
