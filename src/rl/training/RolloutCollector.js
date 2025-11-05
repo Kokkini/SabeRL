@@ -4,8 +4,8 @@
  */
 
 export class RolloutCollector {
-  constructor(game, agent, valueModel, config = {}) {
-    this.game = game;
+  constructor(core, agent, valueModel, config = {}) {
+    this.core = core;
     this.agent = agent;
     this.valueModel = valueModel;
     // Ensure agent is active for rollouts so it does not return random actions
@@ -59,7 +59,7 @@ export class RolloutCollector {
    */
   async collectRollout() {
     const rolloutBuffer = [];
-    let observation = this.game.startRollout();
+    let observation = this.core.reset();
     let action = null;
     let value = null;
     let logProb = null;
@@ -83,7 +83,7 @@ export class RolloutCollector {
       
       // Apply action repeatedly until action interval expires or game ends
       while (timeTillAction > 0 && !done) {
-        const result = this.game.updateRollout(action, this.deltaTime);
+        const result = this.core.step(action, this.deltaTime);
         newObservation = result.observation;
         done = result.done;
         rewardDuringSkip += result.reward;
@@ -114,7 +114,7 @@ export class RolloutCollector {
       
       // If game ended, restart
       if (done) {
-        observation = this.game.startRollout();
+        observation = this.core.reset();
         done = false;
       }
       

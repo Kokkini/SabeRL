@@ -5,8 +5,11 @@
 
 // TensorFlow.js is loaded from CDN as a global 'tf' object
 import { GameConfig, validateConfig } from './config/config.js';
-import { Game } from './game/Game.js';
+import { GameCore } from './game/GameCore.js';
 import { GameLoop } from './game/GameLoop.js';
+import { Renderer } from './game/Renderer.js';
+import { HumanController } from './game/controllers/HumanController.js';
+import { PolicyController } from './game/controllers/PolicyController.js';
 import { PolicyAgent } from './rl/agents/PolicyAgent.js';
 import { NeuralNetwork } from './rl/agents/NeuralNetwork.js';
 import { TrainingSession } from './rl/training/TrainingSession.js';
@@ -17,7 +20,7 @@ import { TrainingUI } from './rl/visualization/TrainingUI.js';
  */
 class SabeRLArena {
   constructor() {
-    this.game = null;
+    this.core = null;
     this.gameLoop = null;
     this.canvas = null;
     this.context = null;
@@ -32,6 +35,7 @@ class SabeRLArena {
     this.policyAgent = null;
     this.aiControlToggle = null;
     this.controlStatusElement = null;
+    this.controller = null;
     
     // Training state
     this.trainingSession = null;
@@ -78,17 +82,26 @@ class SabeRLArena {
       // Set up canvas
       this.setupCanvas();
 
-      // Initialize game
-      this.game = new Game(this.canvas, this.context);
-      
-      // Set up callbacks
-      this.game.onRestart = () => this.onGameRestart();
-      this.game.onGameEnd = (winner) => this.onGameEnd(winner);
-      
-      await this.game.init();
-
-      // Initialize game loop
-      this.gameLoop = new GameLoop(this.game);
+      // Initialize core, renderer, controller, and game loop
+      this.core = new GameCore();
+      const renderer = new Renderer(this.canvas);
+      this.controller = new HumanController();
+      this.gameLoop = new GameLoop(this.core, this.controller, renderer);
+      this.gameLoop.onGameEnd = (outcome) => {
+        if (!outcome) return;
+        if (outcome.isTie) {
+          // no score change on tie
+        } else if (outcome.winnerId === 'player-1') {
+          this.scores.player++;
+        } else if (outcome.winnerId === 'ai-1') {
+          this.scores.ai++;
+        }
+        this.updateScoreboard();
+        const startButton = document.getElementById('start-game-button');
+        if (startButton) startButton.style.display = 'block';
+        const statusElement = document.getElementById('game-status');
+        if (statusElement) statusElement.textContent = 'Game Over';
+      };
       
       // Set up event listeners
       this.setupEventListeners();
@@ -280,14 +293,11 @@ class SabeRLArena {
         this.gameLoop.stop();
       }
 
-      // Reset game state to WAITING and restart entities
-      if (this.game.state !== GameConfig.game.states.WAITING) {
-        console.log(`Game state is ${this.game.state}, restarting to WAITING...`);
-        this.game.restart();
+      // Reset core state and start loop
+      const initialObservation = this.core.reset();
+      if (this.gameLoop && typeof this.gameLoop.setInitialObservation === 'function') {
+        this.gameLoop.setInitialObservation(initialObservation);
       }
-      
-      // Start new game
-      this.game.start();
       this.gameLoop.start();
       
       // Hide start button when game starts
@@ -325,7 +335,7 @@ class SabeRLArena {
    * Resume the game
    */
   resume() {
-    if (this.game && !this.gameLoop.isRunning()) {
+    if (this.core && !this.gameLoop.isRunning()) {
       this.gameLoop.start();
       console.log('Game resumed');
     }
@@ -337,9 +347,6 @@ class SabeRLArena {
   stop() {
     if (this.gameLoop) {
       this.gameLoop.stop();
-    }
-    if (this.game) {
-      this.game.stop();
     }
     console.log('Game stopped');
   }
@@ -501,7 +508,7 @@ class SabeRLArena {
       await this.waitForChartJS();
 
       // Create training session
-      this.trainingSession = new TrainingSession(this.game, {
+      this.trainingSession = new TrainingSession(null, {
         maxGames: GameConfig.rl.maxGames,
         autoSaveInterval: GameConfig.rl.autoSaveInterval
       });
@@ -556,7 +563,7 @@ class SabeRLArena {
    */
   updateAIControlToTrainedAgent() {
     // Only update if AI control is already enabled
-    if (!this.isAIControlEnabled || !this.game) {
+    if (!this.isAIControlEnabled) {
       return;
     }
 
@@ -566,15 +573,9 @@ class SabeRLArena {
     }
 
     try {
-      const player = this.game.getPlayer();
-      if (player && player.isAIControlled()) {
-        // Update to use trained agent
-        player.setControlMode('ai', this.trainingSession.policyAgent);
-        
-        // Update status to show it's using trained agent
-        this.updateControlStatus('AI Control (Trained)', true);
-        console.log('Auto-updated AI control to use trained agent');
-      }
+      // Swap controller on the loop to a policy controller with trained agent
+      this.gameLoop.controller = new PolicyController(this.trainingSession.policyAgent);
+      this.updateControlStatus('AI Control (Trained)', true);
     } catch (error) {
       console.error('Failed to auto-update AI control to trained agent:', error);
     }
@@ -584,8 +585,8 @@ class SabeRLArena {
    * Toggle AI control mode
    */
   toggleAIControl() {
-    if (!this.game) {
-      console.error('Game not available');
+    if (!this.core || !this.gameLoop) {
+      console.error('Core not available');
       return;
     }
 
@@ -593,39 +594,27 @@ class SabeRLArena {
       this.isAIControlEnabled = !this.isAIControlEnabled;
       
       if (this.isAIControlEnabled) {
-        // Enable AI control - use trained agent if available, otherwise use untrained agent
-        const player = this.game.getPlayer();
-        if (player) {
-          // Prefer trained agent from training session if available
-          let agentToUse = this.policyAgent; // Fallback to untrained agent
-          let isTrained = false;
-          
-          if (this.trainingSession && this.trainingSession.policyAgent) {
-            // Use the trained agent from training session
-            agentToUse = this.trainingSession.policyAgent;
-            isTrained = true;
-            console.log('Using trained agent from training session');
-          } else {
-            console.log('Using untrained agent (training session not initialized or no trained agent)');
-          }
-          
-          player.setControlMode('ai', agentToUse);
-          
-          // Update status to show if using trained agent
-          const statusText = isTrained ? 'AI Control (Trained)' : 'AI Control';
-          this.updateControlStatus(statusText, true);
-          this.updateControlButton('Disable AI Control', true);
-          console.log('AI control enabled');
+        // Prefer trained agent if available
+        let agentToUse = this.policyAgent;
+        let isTrained = false;
+        if (this.trainingSession && this.trainingSession.policyAgent) {
+          agentToUse = this.trainingSession.policyAgent;
+          isTrained = true;
+          console.log('Using trained agent from training session');
+        } else {
+          console.log('Using untrained agent (training session not initialized or no trained agent)');
         }
+        this.gameLoop.controller = new PolicyController(agentToUse);
+        const statusText = isTrained ? 'AI Control (Trained)' : 'AI Control';
+        this.updateControlStatus(statusText, true);
+        this.updateControlButton('Disable AI Control', true);
+        console.log('AI control enabled');
       } else {
         // Disable AI control
-        const player = this.game.getPlayer();
-        if (player) {
-          player.setControlMode('human');
-          this.updateControlStatus('Human Control', false);
-          this.updateControlButton('Enable AI Control', false);
-          console.log('AI control disabled');
-        }
+        this.gameLoop.controller = new HumanController();
+        this.updateControlStatus('Human Control', false);
+        this.updateControlButton('Enable AI Control', false);
+        console.log('AI control disabled');
       }
     } catch (error) {
       console.error('Failed to toggle AI control:', error);
@@ -661,16 +650,10 @@ class SabeRLArena {
    * @returns {string} HTML for AI decision display
    */
   getAIDecisionDisplay() {
-    if (!this.isAIControlEnabled || !this.game) {
+    if (!this.isAIControlEnabled) {
       return '';
     }
-
-    const player = this.game.getPlayer();
-    if (!player || !player.isAIControlled()) {
-      return '';
-    }
-
-    const decision = player.getCurrentDecision();
+    const decision = null;
     if (!decision) {
       return '';
     }
@@ -695,11 +678,6 @@ class SabeRLArena {
   destroy() {
     if (this.gameLoop) {
       this.gameLoop.stop();
-    }
-    
-    if (this.game) {
-      this.game.stop();
-      this.game.dispose();
     }
     
     if (this.policyAgent) {

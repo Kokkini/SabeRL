@@ -279,7 +279,7 @@ export const GameConfig = {
       maxGameLength: 60,   // Max game length in seconds
       // distancePenaltyFactor: -1.0 // Per second penalty proportional to distance (distance * factor)
       distancePenaltyFactor: 0.0, // Per second penalty proportional to distance (distance * factor)
-      deltaDistanceRewardFactor: 2.0 // Per second reward for getting closer (deltaDistance * factor * deltaTime)
+      deltaDistanceRewardFactor: 0.5 // Per second reward for getting closer (deltaDistance * factor * deltaTime)
     },
 
     // Headless simulation tuning

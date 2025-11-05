@@ -1,6 +1,6 @@
 /**
- * RewardCalculator - Computes rewards for reinforcement learning training
- * Implements win/loss rewards with time-based penalties
+ * DEPRECATED: Reward calculation is now owned by GameCore.
+ * This file remains temporarily to avoid breaking imports during migration.
  */
 
 export class RewardCalculator {

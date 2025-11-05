@@ -10,7 +10,7 @@ import { TrainingMetrics } from '../entities/TrainingMetrics.js';
 import { ModelManager } from '../utils/ModelManager.js';
 import { PPOTrainer } from './PPOTrainer.js';
 import { RolloutCollector } from './RolloutCollector.js';
-import { Game } from '../../game/Game.js';
+import { GameCore } from '../../game/GameCore.js';
 
 export class TrainingSession {
   constructor(game, options = {}) {
@@ -145,15 +145,14 @@ export class TrainingSession {
     const rolloutConfig = GameConfig.rl.rollout;
     
     for (let i = 0; i < this.numRollouts; i++) {
-      // Create headless game for each collector
-      const headlessGame = new Game();
-      await headlessGame.init();
+      // Create headless core for each collector
+      const core = new GameCore();
       
       // Create a copy of the policy agent for this collector
       // Note: In a worker-based system, this would be done in the worker
       // For now, we'll use the shared agent (will need to clone properly for workers)
       const collector = new RolloutCollector(
-        headlessGame,
+        core,
         this.policyAgent,
         this.valueModel.model,
         {

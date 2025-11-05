@@ -42,6 +42,7 @@ export class Player {
     // Movement state
     this.movementSpeed = GameConfig.player.movementSpeed;
     this.lastUpdateTime = 0;
+    this.desiredActionMask = [false, false, false, false];
   }
 
   /**
@@ -63,6 +64,28 @@ export class Player {
     this.saber.update(deltaTime);
     
     this.lastUpdateTime = Date.now();
+  }
+
+  setDesiredActionMask(mask) {
+    if (Array.isArray(mask) && mask.length === 4) {
+      this.desiredActionMask = mask.map(v => !!v);
+      // Optionally sync inputState so existing systems using inputState still work
+      this.inputState.up = !!this.desiredActionMask[0];
+      this.inputState.left = !!this.desiredActionMask[1];
+      this.inputState.down = !!this.desiredActionMask[2];
+      this.inputState.right = !!this.desiredActionMask[3];
+    }
+  }
+
+  toObservation() {
+    return {
+      id: this.id,
+      x: this.position?.x ?? 0,
+      y: this.position?.y ?? 0,
+      vx: this.velocity?.x ?? 0,
+      vy: this.velocity?.y ?? 0,
+      isAlive: !!this.isAlive
+    };
   }
 
   /**

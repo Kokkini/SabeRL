@@ -4,14 +4,18 @@
  */
 
 import { GameConfig } from '../config/config.js';
+import { Renderer } from './Renderer.js';
 
 export class GameLoop {
   /**
    * Create a new GameLoop
    * @param {Object} game - Game instance to run
    */
-  constructor(game) {
-    this.game = game;
+  constructor(core, controller, renderer = null) {
+    this.core = core;
+    this.controller = controller;
+    this.renderer = renderer instanceof Renderer ? renderer : null;
+    this.lastObservation = null;
     this._isRunning = false;
     this.lastTime = 0;
     this.accumulator = 0;
@@ -51,6 +55,10 @@ export class GameLoop {
     
     // Start the loop
     this.loop();
+  }
+
+  setInitialObservation(observation) {
+    this.lastObservation = observation || null;
   }
 
   /**
@@ -129,9 +137,18 @@ export class GameLoop {
    * @param {number} deltaTime - Time since last update in seconds
    */
   update(deltaTime) {
-    // Update the game
-    if (this.game) {
-      this.game.update(deltaTime);
+    // Decide action, step core
+    if (this.core && this.controller) {
+      const mask = this.controller.decide(this.lastObservation, deltaTime);
+      const result = this.core.step(mask, deltaTime);
+      this.lastObservation = result ? result.observation : this.lastObservation;
+      if (result && result.done) {
+        if (this.onGameEnd) {
+          this.onGameEnd(result.outcome);
+        }
+        this.stop();
+        return;
+      }
     }
     
     // Call custom update callback
@@ -144,9 +161,9 @@ export class GameLoop {
    * Render the game
    */
   render() {
-    // Render the game
-    if (this.game) {
-      this.game.render();
+    // Render from core state
+    if (this.renderer && this.core) {
+      this.renderer.render(this.core);
     }
     
     // Call custom render callback
