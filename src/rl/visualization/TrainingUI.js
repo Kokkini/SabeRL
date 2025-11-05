@@ -122,6 +122,23 @@ export class TrainingUI {
     this.opponentManager = new OpponentPolicyManager();
     this.oppListContainer = null;
     this.oppUploadInput = null;
+
+    // Snapshot initial defaults from config.js at construction time
+    this.initialDefaults = {
+      learningRate: GameConfig.rl.learningRate,
+      miniBatchSize: GameConfig.rl.miniBatchSize,
+      epochs: GameConfig.rl.epochs,
+      discountFactor: GameConfig.rl.discountFactor,
+      clipRatio: GameConfig.rl.clipRatio,
+      valueLossCoeff: GameConfig.rl.valueLossCoeff,
+      entropyCoeff: GameConfig.rl.entropyCoeff,
+      maxGradNorm: GameConfig.rl.maxGradNorm,
+      gaeLambda: GameConfig.rl.gaeLambda,
+      rewards: { ...GameConfig.rl.rewards }
+    };
+
+    // Training parameters
+    this.trainingParams = this.loadTrainingParams();
   }
 
   /**
@@ -196,6 +213,37 @@ export class TrainingUI {
             <input id="opp-upload-input" type="file" accept="application/json" style="display:none" />
             <button id="opp-reset" class="control-button">Reset to Random</button>
           </div>
+        </div>
+
+        <div class="training-params" style="margin-top:16px; border:1px solid #444; padding:12px; border-radius:4px;">
+          <h4>Training Parameters</h4>
+          <details>
+            <summary style="cursor:pointer; margin-bottom:8px;">Training Hyperparameters</summary>
+            <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:8px; font-size:12px;">
+              <div><label>Learning Rate: <input id="param-learningRate" type="number" step="0.0001" min="0.0001" max="1" style="width:80px;" /></label></div>
+              <div><label>Mini Batch Size: <input id="param-miniBatchSize" type="number" step="1" min="1" max="512" style="width:80px;" /></label></div>
+              <div><label>Epochs: <input id="param-epochs" type="number" step="1" min="1" max="20" style="width:80px;" /></label></div>
+              <div><label>Discount Factor: <input id="param-discountFactor" type="number" step="0.01" min="0" max="1" style="width:80px;" /></label></div>
+              <div><label>Clip Ratio: <input id="param-clipRatio" type="number" step="0.01" min="0" max="1" style="width:80px;" /></label></div>
+              <div><label>Value Loss Coeff: <input id="param-valueLossCoeff" type="number" step="0.1" min="0" max="10" style="width:80px;" /></label></div>
+              <div><label>Entropy Coeff: <input id="param-entropyCoeff" type="number" step="0.001" min="0" max="1" style="width:80px;" /></label></div>
+              <div><label>Max Grad Norm: <input id="param-maxGradNorm" type="number" step="0.1" min="0" max="10" style="width:80px;" /></label></div>
+              <div><label>GAE Lambda: <input id="param-gaeLambda" type="number" step="0.01" min="0" max="1" style="width:80px;" /></label></div>
+            </div>
+          </details>
+          <details>
+            <summary style="cursor:pointer; margin-top:8px; margin-bottom:8px;">Reward Structure</summary>
+            <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:8px; font-size:12px;">
+              <div><label>Win Reward: <input id="param-reward-win" type="number" step="0.1" style="width:80px;" /></label></div>
+              <div><label>Loss Reward: <input id="param-reward-loss" type="number" step="0.1" style="width:80px;" /></label></div>
+              <div><label>Tie Reward: <input id="param-reward-tie" type="number" step="0.1" style="width:80px;" /></label></div>
+              <div><label>Time Penalty: <input id="param-reward-timePenalty" type="number" step="0.01" style="width:80px;" /></label></div>
+              <div><label>Max Game Length: <input id="param-reward-maxGameLength" type="number" step="1" min="1" style="width:80px;" /></label></div>
+              <div><label>Distance Penalty Factor: <input id="param-reward-distancePenaltyFactor" type="number" step="0.1" style="width:80px;" /></label></div>
+              <div><label>Delta Distance Reward Factor: <input id="param-reward-deltaDistanceRewardFactor" type="number" step="0.01" min="0" style="width:80px;" /></label></div>
+            </div>
+          </details>
+          <button id="reset-training-params" class="control-button" style="margin-top:8px;">Reset to Defaults</button>
         </div>
 
         <div class="progress-container">
@@ -287,6 +335,9 @@ export class TrainingUI {
     this.oppListContainer = document.getElementById('opp-options-list');
     this.oppUploadInput = document.getElementById('opp-upload-input');
     this.renderOpponentOptions();
+
+    // Initialize training parameter inputs
+    this.initializeTrainingParams();
   }
 
   /**
@@ -863,6 +914,10 @@ export class TrainingUI {
     }
 
     try {
+      // Update training session with current UI parameters before starting
+      const params = this.getTrainingParams();
+      await this.trainingSession.updateTrainingParams(params);
+      
       await this.trainingSession.start();
       this.updateButtonStates('training');
       this.updateStatus('Training...');
@@ -1467,6 +1522,175 @@ export class TrainingUI {
     this.currentBatchWins = [];
     this.currentBatchGameResults = [];
     this.batchNumber = 0;
+  }
+
+  /**
+   * Load training parameters from localStorage or return defaults
+   */
+  loadTrainingParams() {
+    const storageKey = 'saber_rl_training_params';
+    try {
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        return this.mergeWithDefaults(parsed);
+      }
+    } catch (e) {
+      // ignore
+    }
+    return this.getDefaultParams();
+  }
+
+  /**
+   * Get default parameters from GameConfig
+   */
+  getDefaultParams() {
+    // Use the snapshot captured on construction time to avoid picking up modified runtime values
+    return JSON.parse(JSON.stringify(this.initialDefaults));
+  }
+
+  /**
+   * Merge parsed params with defaults to ensure all fields exist
+   */
+  mergeWithDefaults(parsed) {
+    const defaults = this.getDefaultParams();
+    return {
+      ...defaults,
+      ...parsed,
+      rewards: {
+        ...defaults.rewards,
+        ...(parsed.rewards || {})
+      }
+    };
+  }
+
+  /**
+   * Save training parameters to localStorage
+   */
+  saveTrainingParams() {
+    const storageKey = 'saber_rl_training_params';
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(this.trainingParams));
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  /**
+   * Initialize training parameter inputs with values and bind change handlers
+   */
+  initializeTrainingParams() {
+    const params = this.trainingParams;
+    
+    // Set input values
+    const setValue = (id, val) => {
+      const el = document.getElementById(id);
+      if (el) el.value = val;
+    };
+    
+    setValue('param-learningRate', params.learningRate);
+    setValue('param-miniBatchSize', params.miniBatchSize);
+    setValue('param-epochs', params.epochs);
+    setValue('param-discountFactor', params.discountFactor);
+    setValue('param-clipRatio', params.clipRatio);
+    setValue('param-valueLossCoeff', params.valueLossCoeff);
+    setValue('param-entropyCoeff', params.entropyCoeff);
+    setValue('param-maxGradNorm', params.maxGradNorm);
+    setValue('param-gaeLambda', params.gaeLambda);
+    setValue('param-reward-win', params.rewards.win);
+    setValue('param-reward-loss', params.rewards.loss);
+    setValue('param-reward-tie', params.rewards.tie);
+    setValue('param-reward-timePenalty', params.rewards.timePenalty);
+    setValue('param-reward-maxGameLength', params.rewards.maxGameLength);
+    setValue('param-reward-distancePenaltyFactor', params.rewards.distancePenaltyFactor);
+    setValue('param-reward-deltaDistanceRewardFactor', params.rewards.deltaDistanceRewardFactor);
+
+    // Bind change handlers
+    const bindChange = (id, fn) => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('change', fn);
+    };
+    
+    bindChange('param-learningRate', (e) => {
+      this.trainingParams.learningRate = Number(e.target.value);
+      this.saveTrainingParams();
+    });
+    bindChange('param-miniBatchSize', (e) => {
+      this.trainingParams.miniBatchSize = Number(e.target.value);
+      this.saveTrainingParams();
+    });
+    bindChange('param-epochs', (e) => {
+      this.trainingParams.epochs = Number(e.target.value);
+      this.saveTrainingParams();
+    });
+    bindChange('param-discountFactor', (e) => {
+      this.trainingParams.discountFactor = Number(e.target.value);
+      this.saveTrainingParams();
+    });
+    bindChange('param-clipRatio', (e) => {
+      this.trainingParams.clipRatio = Number(e.target.value);
+      this.saveTrainingParams();
+    });
+    bindChange('param-valueLossCoeff', (e) => {
+      this.trainingParams.valueLossCoeff = Number(e.target.value);
+      this.saveTrainingParams();
+    });
+    bindChange('param-entropyCoeff', (e) => {
+      this.trainingParams.entropyCoeff = Number(e.target.value);
+      this.saveTrainingParams();
+    });
+    bindChange('param-maxGradNorm', (e) => {
+      this.trainingParams.maxGradNorm = Number(e.target.value);
+      this.saveTrainingParams();
+    });
+    bindChange('param-gaeLambda', (e) => {
+      this.trainingParams.gaeLambda = Number(e.target.value);
+      this.saveTrainingParams();
+    });
+    bindChange('param-reward-win', (e) => {
+      this.trainingParams.rewards.win = Number(e.target.value);
+      this.saveTrainingParams();
+    });
+    bindChange('param-reward-loss', (e) => {
+      this.trainingParams.rewards.loss = Number(e.target.value);
+      this.saveTrainingParams();
+    });
+    bindChange('param-reward-tie', (e) => {
+      this.trainingParams.rewards.tie = Number(e.target.value);
+      this.saveTrainingParams();
+    });
+    bindChange('param-reward-timePenalty', (e) => {
+      this.trainingParams.rewards.timePenalty = Number(e.target.value);
+      this.saveTrainingParams();
+    });
+    bindChange('param-reward-maxGameLength', (e) => {
+      this.trainingParams.rewards.maxGameLength = Number(e.target.value);
+      this.saveTrainingParams();
+    });
+    bindChange('param-reward-distancePenaltyFactor', (e) => {
+      this.trainingParams.rewards.distancePenaltyFactor = Number(e.target.value);
+      this.saveTrainingParams();
+    });
+    bindChange('param-reward-deltaDistanceRewardFactor', (e) => {
+      this.trainingParams.rewards.deltaDistanceRewardFactor = Number(e.target.value);
+      this.saveTrainingParams();
+    });
+
+    const resetBtn = document.getElementById('reset-training-params');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => {
+        this.trainingParams = this.getDefaultParams();
+        this.saveTrainingParams();
+        this.initializeTrainingParams();
+      });
+    }
+  }
+
+  /**
+   * Get current training parameters (for passing to TrainingSession)
+   */
+  getTrainingParams() {
+    return { ...this.trainingParams };
   }
 
   /**

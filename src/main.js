@@ -523,8 +523,7 @@ class SabeRLArena {
       
       this.policyAgent = new PolicyAgent({
         neuralNetwork: neuralNetwork,
-        decisionInterval: GameConfig.rl.decisionInterval,
-        explorationRate: GameConfig.rl.explorationRate
+        decisionInterval: GameConfig.rl.decisionInterval
       });
       
       // Initialize AI control UI state

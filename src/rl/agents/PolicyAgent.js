@@ -21,7 +21,7 @@ export class PolicyAgent {
     this.decisionFrameCount = 0; // legacy; no longer used for timing
     this.accumulatedDecisionSec = 0;
     this.isActive = false;
-    this.explorationRate = config.explorationRate || GameConfig.rl.explorationRate;
+    // Removed explorationRate (unused in decision-making)
     
     // Experience collection callback
     this.onExperience = config.onExperience || null;
@@ -55,9 +55,7 @@ export class PolicyAgent {
       throw new Error(`Invalid decision interval: ${this.decisionInterval}. Must be positive`);
     }
     
-    if (this.explorationRate < 0 || this.explorationRate > 1) {
-      throw new Error(`Invalid exploration rate: ${this.explorationRate}. Must be in range [0, 1]`);
-    }
+    // no explorationRate validation
   }
 
   /**
@@ -152,14 +150,7 @@ export class PolicyAgent {
    * @param {Object} prediction - Neural network prediction
    * @returns {Object} Modified prediction with exploration
    */
-  applyExploration(prediction) {
-    if (Math.random() < this.explorationRate) {
-      // Random exploration
-      return this.getRandomPrediction();
-    }
-    
-    return prediction;
-  }
+  // Removed applyExploration; exploration now handled by training entropy
 
   /**
    * Get random prediction for exploration
@@ -331,10 +322,6 @@ export class PolicyAgent {
       this.decisionInterval = config.decisionInterval;
     }
     
-    if (config.explorationRate !== undefined) {
-      this.explorationRate = config.explorationRate;
-    }
-    
     this.validate();
   }
 
@@ -346,7 +333,6 @@ export class PolicyAgent {
     return {
       id: this.id,
       decisionInterval: this.decisionInterval,
-      explorationRate: this.explorationRate,
       isActive: this.isActive
     };
   }
@@ -360,7 +346,6 @@ export class PolicyAgent {
       id: this.id,
       isActive: this.isActive,
       decisionInterval: this.decisionInterval,
-      explorationRate: this.explorationRate,
       currentDecision: this.currentDecision ? this.currentDecision.toObject() : null,
       decisionFrameCount: this.decisionFrameCount,
       neuralNetworkId: this.neuralNetwork.id

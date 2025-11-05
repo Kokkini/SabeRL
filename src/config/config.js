@@ -32,9 +32,6 @@ export function validateConfig(config = GameConfig) {
   if (config.rl.learningRate <= 0 || config.rl.learningRate > 1) {
     errors.push('Learning rate must be between 0 and 1');
   }
-  if (config.rl.explorationRate < 0 || config.rl.explorationRate > 1) {
-    errors.push('Exploration rate must be between 0 and 1');
-  }
   if (config.rl.discountFactor < 0 || config.rl.discountFactor > 1) {
     errors.push('Discount factor must be between 0 and 1');
   }
@@ -157,8 +154,7 @@ export const GameConfig = {
   player: {
     radius: 0.5,      // Player collision radius in units
     movementSpeed: 5, // Movement speed in units per second
-    color: '#4a9eff', // Blue color for human player
-    initialPosition: { x: 5, y: 10 } // Starting position
+    color: '#4a9eff'  // Blue color for human player
   },
 
   // AI settings
@@ -166,7 +162,6 @@ export const GameConfig = {
     radius: 0.5,      // AI collision radius in units
     movementSpeed: 5, // Same speed as player
     color: '#ff4a4a', // Red color for AI
-    initialPosition: { x: 15, y: 10 }, // Starting position
     directionChangeMin: 0.5, // Min time between direction changes (seconds)
     directionChangeMax: 2.0  // Max time between direction changes (seconds)
   },
@@ -211,23 +206,16 @@ export const GameConfig = {
       GAME_OVER: 'gameOver',
       TIE: 'tie'
     },
-    tieGameHandling: 'restart', // How to handle tie games: 'restart', 'continue', 'random'
     spawnMinDistance: 3 // Minimum distance between spawned entities (units)
   },
 
   // Performance settings
   performance: {
-    maxMemoryUsage: 2 * 1024 * 1024 * 1024, // 2GB in bytes
-    frameTimeBudget: 16.67, // 16.67ms for 60 FPS
-    inputLagThreshold: 16,   // Max input lag in milliseconds
     collisionAccuracy: 0.95  // Target collision detection accuracy (95%)
   },
 
   // Browser compatibility
   compatibility: {
-    minChromeVersion: 57,
-    minFirefoxVersion: 52,
-    minSafariVersion: 11,
     requiredFeatures: ['Canvas', 'requestAnimationFrame', 'addEventListener']
   },
 
@@ -238,10 +226,8 @@ export const GameConfig = {
     
     // Training parameters
     learningRate: 0.001,
-    explorationRate: 0.1, // Higher exploration for untrained network (note: PPO uses entropy for exploration, this is for fallback)
     miniBatchSize: 64, // Mini-batch size for gradient updates
     epochs: 4, // Number of epochs to train for
-    rewardScaling: 1.0,
     discountFactor: 0.99,
     
     // PPO-specific hyperparameters
@@ -254,16 +240,13 @@ export const GameConfig = {
     // Game settings
     decisionInterval: 0.2, // seconds between AI decisions
     parallelGames: 1,   // number of parallel training games
-    actionThreshold: 0.5, // threshold for multi-binary action (sigmoid > threshold => key pressed)
     
     // Training algorithms
     algorithm: 'PPO', // Only PPO is supported
     
     // Performance settings
-    maxMemoryUsage: 2 * 1024 * 1024 * 1024, // 2GB
     autoSaveInterval: 50, // Auto-save every N games
     maxGames: 10000, // Maximum number of games to train for
-    performanceMonitoring: true,
     
     // UI settings
     chartMaxDataPoints: 500,    // Keep only last N data points on charts
@@ -282,14 +265,6 @@ export const GameConfig = {
       deltaDistanceRewardFactor: 0.1 // Per second reward for getting closer (deltaDistance * factor * deltaTime)
     },
 
-    // Headless simulation tuning
-    headless: {
-      // Logical steps per second for headless sims. Higher = faster simulation.
-      targetFPS: 10,
-      // Yield to event loop every N steps to keep UI responsive. 0 disables yielding.
-      yieldEverySteps: 0
-    },
-    
     // Rollout configuration
     rollout: {
       rolloutMaxLength: 4096,      // Number of experiences to collect in each rollout

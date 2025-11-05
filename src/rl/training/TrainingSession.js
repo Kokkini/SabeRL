@@ -63,6 +63,7 @@ export class TrainingSession {
     this.algorithm = GameConfig.rl.algorithm;
     this.trainer = null;
     this.valueModel = null;
+    this.trainingParams = null; // Will be set from UI when training starts
 
     // Opponent manager for rollouts
     this.opponentManager = new OpponentPolicyManager();
@@ -90,8 +91,7 @@ export class TrainingSession {
       // Create policy agent (no experience callback - rollouts handle collection)
       this.policyAgent = new PolicyAgent({
         neuralNetwork: neuralNetwork,
-        decisionInterval: GameConfig.rl.decisionInterval,
-        explorationRate: GameConfig.rl.explorationRate
+        decisionInterval: GameConfig.rl.decisionInterval
       });
 
       // Initialize trainer based on algorithm
@@ -112,8 +112,11 @@ export class TrainingSession {
 
   /**
    * Initialize the training algorithm
+   * @param {Object} trainingParams - Optional training parameters (defaults from GameConfig if not provided)
    */
-  async initializeTrainer() {
+  async initializeTrainer(trainingParams = null) {
+    const params = trainingParams || this.trainingParams || {};
+    
     // Create value model for PPO
     this.valueModel = new NeuralNetwork({
       architecture: {
@@ -130,15 +133,37 @@ export class TrainingSession {
     }
     
     this.trainer = new PPOTrainer({
-      learningRate: GameConfig.rl.learningRate,
-      miniBatchSize: GameConfig.rl.miniBatchSize,
-      epochs: GameConfig.rl.epochs,
-      clipRatio: GameConfig.rl.clipRatio,
-      valueLossCoeff: GameConfig.rl.valueLossCoeff,
-      entropyCoeff: GameConfig.rl.entropyCoeff,
-      maxGradNorm: GameConfig.rl.maxGradNorm,
-      gaeLambda: GameConfig.rl.gaeLambda
+      learningRate: params.learningRate ?? GameConfig.rl.learningRate,
+      miniBatchSize: params.miniBatchSize ?? GameConfig.rl.miniBatchSize,
+      epochs: params.epochs ?? GameConfig.rl.epochs,
+      clipRatio: params.clipRatio ?? GameConfig.rl.clipRatio,
+      valueLossCoeff: params.valueLossCoeff ?? GameConfig.rl.valueLossCoeff,
+      entropyCoeff: params.entropyCoeff ?? GameConfig.rl.entropyCoeff,
+      maxGradNorm: params.maxGradNorm ?? GameConfig.rl.maxGradNorm,
+      gaeLambda: params.gaeLambda ?? GameConfig.rl.gaeLambda
     });
+  }
+
+  /**
+   * Update training parameters and reinitialize trainer if needed
+   * @param {Object} trainingParams - Training parameters
+   */
+  async updateTrainingParams(trainingParams) {
+    this.trainingParams = trainingParams;
+    
+    // Update GameConfig for this training session
+    if (trainingParams.rewards) {
+      Object.assign(GameConfig.rl.rewards, trainingParams.rewards);
+    }
+    if (trainingParams.discountFactor !== undefined) {
+      GameConfig.rl.discountFactor = trainingParams.discountFactor;
+    }
+    
+    // Reinitialize trainer with new params
+    if (this.trainer) {
+      this.trainer.dispose();
+    }
+    await this.initializeTrainer(trainingParams);
   }
 
   /**
