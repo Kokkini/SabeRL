@@ -227,7 +227,7 @@ export class TrainingUI {
           <h3>Training Parameters</h3>
           <details>
             <summary style="cursor:pointer; margin-bottom:8px;">Training Hyperparameters</summary>
-            <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:8px; font-size:12px;">
+            <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:8px; font-size:12px; margin-bottom:8px;">
               <div><label>Learning Rate: <input id="param-learningRate" type="number" step="0.0001" min="0.0001" max="1" style="width:80px;" /></label></div>
               <div><label>Mini Batch Size: <input id="param-miniBatchSize" type="number" step="1" min="1" max="512" style="width:80px;" /></label></div>
               <div><label>Epochs: <input id="param-epochs" type="number" step="1" min="1" max="20" style="width:80px;" /></label></div>
@@ -241,7 +241,7 @@ export class TrainingUI {
           </details>
           <details>
             <summary style="cursor:pointer; margin-top:8px; margin-bottom:8px;">Reward Structure</summary>
-            <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:8px; font-size:12px;">
+            <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:8px; font-size:12px; margin-bottom:8px;">
               <div><label>Win Reward: <input id="param-reward-win" type="number" step="0.1" style="width:80px;" /></label></div>
               <div><label>Loss Reward: <input id="param-reward-loss" type="number" step="0.1" style="width:80px;" /></label></div>
               <div><label>Tie Reward: <input id="param-reward-tie" type="number" step="0.1" style="width:80px;" /></label></div>
