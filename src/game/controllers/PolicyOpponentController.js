@@ -22,7 +22,7 @@ export class PolicyOpponentController extends PlayerController {
     const swapped = this.#swapObservation(observation);
     // Use agent's decision interval logic; returns a MovementDecision when interval elapses
     if (typeof this.policy.makeDecision === 'function') {
-      const decision = this.policy.makeDecision(swapped, deltaTime);
+      const decision = this.policy.makeDecision(swapped);
       if (decision && Array.isArray(decision.actionMask)) {
         this.lastActionMask = decision.actionMask;
       }

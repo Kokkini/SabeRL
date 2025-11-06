@@ -47,6 +47,7 @@ export class TrainingSession {
     this.onGameEnd = null;
     this.onTrainingProgress = null;
     this.onTrainingComplete = null;
+    this.onRolloutStart = null;
     
     // Create MessageChannel for non-throttled yielding (works in background tabs)
     this.yieldChannel = new MessageChannel();
@@ -90,8 +91,7 @@ export class TrainingSession {
 
       // Create policy agent (no experience callback - rollouts handle collection)
       this.policyAgent = new PolicyAgent({
-        neuralNetwork: neuralNetwork,
-        decisionInterval: GameConfig.rl.decisionInterval
+        neuralNetwork: neuralNetwork
       });
 
       // Initialize trainer based on algorithm
@@ -197,10 +197,27 @@ export class TrainingSession {
             try { this.opponentManager.load(); } catch (_) {}
             const sel = this.opponentManager.sample();
             if (sel.type === 'policy' && sel.agent) {
-              sel.agent.decisionIntervalSec = rolloutConfig.actionIntervalSeconds;
               return new PolicyOpponentController(sel.agent);
             }
             return null; // null => random AI
+          },
+          onEpisodeEnd: (outcome) => {
+            // Increment games immediately; detailed metrics updated after rollout
+            this.gamesCompleted += 1;
+            // Update per-episode metrics for immediate win rate/UI refresh
+            try {
+              const isTie = !!(outcome && outcome.isTie);
+              const won = outcome && outcome.winnerId === 'player-1' && !isTie;
+              this.trainingMetrics.updateGameResult({
+                won: !!won,
+                isTie: isTie,
+                gameLength: 0,
+                reward: 0
+              });
+            } catch (_) {}
+            if (this.onGameEnd) {
+              try { this.onGameEnd(null, this.gamesCompleted, this.trainingMetrics); } catch (_) {}
+            }
           }
         }
       );
@@ -291,6 +308,9 @@ export class TrainingSession {
         
         // Collect rollouts from all collectors in parallel
         console.log('Collecting rollouts...');
+        if (this.onRolloutStart) {
+          try { this.onRolloutStart(); } catch (_) {}
+        }
         const rolloutPromises = this.rolloutCollectors.map(collector => 
           collector.collectRollout()
         );

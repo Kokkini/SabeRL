@@ -343,8 +343,6 @@ class SabeRLArena {
       }
       const selection = this.opponentManager ? this.opponentManager.sample() : { type: 'random' };
       if (selection.type === 'policy' && selection.agent) {
-        // Align decision interval with gameplay cadence
-        selection.agent.decisionIntervalSec = GameConfig.rl.decisionInterval;
         const controller = new PolicyOpponentController(selection.agent);
         this.core.setOpponentController(controller);
         console.log(`Opponent set to policy: ${selection.label}`);
@@ -522,8 +520,7 @@ class SabeRLArena {
       });
       
       this.policyAgent = new PolicyAgent({
-        neuralNetwork: neuralNetwork,
-        decisionInterval: GameConfig.rl.decisionInterval
+        neuralNetwork: neuralNetwork
       });
       
       // Initialize AI control UI state
@@ -612,7 +609,7 @@ class SabeRLArena {
     try {
       // Swap controller on the loop to a policy controller with trained agent
       this.gameLoop.controller = new PolicyController(this.trainingSession.policyAgent);
-      this.updateControlStatus('AI Control (Trained)', true);
+      this.updateControlStatus('AI Control', true);
     } catch (error) {
       console.error('Failed to auto-update AI control to trained agent:', error);
     }
@@ -642,7 +639,7 @@ class SabeRLArena {
           console.log('Using untrained agent (training session not initialized or no trained agent)');
         }
         this.gameLoop.controller = new PolicyController(agentToUse);
-        const statusText = isTrained ? 'AI Control (Trained)' : 'AI Control';
+        const statusText = isTrained ? 'AI Control' : 'AI Control';
         this.updateControlStatus(statusText, true);
         this.updateControlButton('Disable AI Control', true);
         console.log('AI control enabled');

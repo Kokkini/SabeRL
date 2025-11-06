@@ -15,11 +15,8 @@ export class PolicyAgent {
   constructor(config = {}) {
     this.id = config.id || this.generateId();
     this.neuralNetwork = config.neuralNetwork || new NeuralNetwork();
-    // decisionInterval is interpreted in seconds
-    this.decisionIntervalSec = config.decisionInterval || GameConfig.rl.decisionInterval;
     this.currentDecision = null;
-    this.decisionFrameCount = 0; // legacy; no longer used for timing
-    this.accumulatedDecisionSec = 0;
+    this.decisionFrameCount = 0; // legacy; retained for compatibility
     this.isActive = false;
     // Removed explorationRate (unused in decision-making)
     
@@ -51,10 +48,6 @@ export class PolicyAgent {
       throw new Error('Neural network is required');
     }
     
-    if (this.decisionInterval <= 0) {
-      throw new Error(`Invalid decision interval: ${this.decisionInterval}. Must be positive`);
-    }
-    
     // no explorationRate validation
   }
 
@@ -63,24 +56,14 @@ export class PolicyAgent {
    * @param {GameState} gameState - Current game state
    * @returns {MovementDecision} Movement decision
    */
-  makeDecision(gameState, deltaTime) {
+  makeDecision(gameState) {
     try {
       if (!this.isActive) {
         return this.getRandomDecision();
       }
-      
-      // Accumulate simulated time (deltaTime is in seconds)
-      if (typeof deltaTime === 'number' && !Number.isNaN(deltaTime)) {
-        this.accumulatedDecisionSec += deltaTime;
-      }
-
-      // Check if we need to make a new decision based on elapsed seconds
-      if (this.accumulatedDecisionSec >= this.decisionIntervalSec) {
-        this.currentDecision = this.processGameState(gameState);
-        this.accumulatedDecisionSec = 0;
-      }
-      
-      return this.currentDecision || this.getRandomDecision();
+      // Always compute a fresh decision; external loops handle throttling
+      this.currentDecision = this.processGameState(gameState);
+      return this.currentDecision;
     } catch (error) {
       console.error('Failed to make decision:', error);
       return this.getRandomDecision();
@@ -135,7 +118,7 @@ export class PolicyAgent {
         action: actionDecision.action,
         actionMask: actionDecision.actionMask,
         confidence: actionDecision.confidence,
-        frameInterval: this.decisionIntervalSec,
+        frameInterval: 0,
         probabilities: actionDecision.probabilities,
         timestamp: actionDecision.timestamp
       });
@@ -290,7 +273,7 @@ export class PolicyAgent {
    * @returns {MovementDecision} Random decision
    */
   getRandomDecision() {
-    return MovementDecision.random(this.decisionInterval);
+    return MovementDecision.random(0);
   }
 
   /**
@@ -318,10 +301,6 @@ export class PolicyAgent {
    * @param {Object} config - New configuration
    */
   updateConfig(config) {
-    if (config.decisionInterval !== undefined) {
-      this.decisionInterval = config.decisionInterval;
-    }
-    
     this.validate();
   }
 
@@ -332,7 +311,6 @@ export class PolicyAgent {
   getConfig() {
     return {
       id: this.id,
-      decisionInterval: this.decisionInterval,
       isActive: this.isActive
     };
   }
@@ -345,7 +323,6 @@ export class PolicyAgent {
     return {
       id: this.id,
       isActive: this.isActive,
-      decisionInterval: this.decisionInterval,
       currentDecision: this.currentDecision ? this.currentDecision.toObject() : null,
       decisionFrameCount: this.decisionFrameCount,
       neuralNetworkId: this.neuralNetwork.id
@@ -361,7 +338,6 @@ export class PolicyAgent {
     return new PolicyAgent({
       id: this.generateId(),
       neuralNetwork: clonedNetwork,
-      decisionInterval: this.decisionInterval,
       explorationRate: this.explorationRate
     });
   }
@@ -420,7 +396,6 @@ export class PolicyAgent {
       return new PolicyAgent({
         id: modelData.id,
         neuralNetwork: neuralNetwork,
-        decisionInterval: modelData.config.decisionInterval,
         explorationRate: modelData.config.explorationRate
       });
     } catch (error) {
@@ -459,6 +434,6 @@ export class PolicyAgent {
    * @returns {string} String representation
    */
   toString() {
-    return `PolicyAgent(id=${this.id}, active=${this.isActive}, interval=${this.decisionInterval})`;
+    return `PolicyAgent(id=${this.id}, active=${this.isActive})`;
   }
 }

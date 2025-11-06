@@ -117,7 +117,7 @@ export class Player {
     if (!this.policyAgent || !gameState) return;
 
     // Make AI decision
-    const decision = this.policyAgent.makeDecision(gameState, deltaTime);
+    const decision = this.policyAgent.makeDecision(gameState);
     this.currentDecision = decision;
     
     // Convert decision to input state

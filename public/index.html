@@ -17,38 +17,27 @@
             <canvas id="game-canvas" width="800" height="600"></canvas>
             
             <div id="game-ui">
-                <button id="start-game-button" class="start-button">Start Game</button>
-                <div id="game-status" style="display: none;"></div>
-                <div id="scoreboard">
-                    <div class="score-item">
-                        <span class="player-name">Player</span>
-                        <span class="score" id="player-score">0</span>
-                    </div>
-                    <div class="score-item">
-                        <span class="player-name">AI</span>
-                        <span class="score" id="ai-score">0</span>
-                    </div>
-                    <button id="reset-score-button" class="control-button">Reset Score</button>
-                </div>
-                <div id="game-controls">
+                <div style="display: flex; flex-direction: row; gap: 20px; width: 100%; flex-wrap: wrap; justify-content: center;">
+                    <button id="start-game-button" class="start-button">Start Game</button>
+                    <div id="game-status" style="display: none;"></div>
                     <div class="control-group">
-                        <h3>Controls</h3>
-                        <p>W - Move Up</p>
-                        <p>A - Move Left</p>
-                        <p>S - Move Down</p>
-                        <p>D - Move Right</p>
-                    </div>
-                    <div class="control-group">
-                        <h3>Game Rules</h3>
-                        <p>• Touch opponent with your saber to win</p>
-                        <p>• Sabers rotate automatically</p>
-                        <p>• Stay within arena boundaries</p>
-                    </div>
-                    <div class="control-group">
-                        <h3>RL Training</h3>
                         <button id="ai-control-toggle" class="control-button">Enable AI Control</button>
                         <div id="control-status">Human Control</div>
                     </div>
+                    <div id="scoreboard" class="control-group">
+                        <div class="score-item">
+                            <span class="player-name">Blue</span>
+                            <span class="score" id="player-score">0</span>
+                        </div>
+                        <div class="score-item">
+                            <span class="player-name">Red</span>
+                            <span class="score" id="ai-score">0</span>
+                        </div>
+                        <button id="reset-score-button" class="control-button">Reset Score</button>
+                    </div>
+                </div>
+                
+                <div id="game-controls">
                     <div id="training-ui" class="control-group">
                         <!-- Training UI will be dynamically created here -->
                     </div>

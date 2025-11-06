@@ -12,8 +12,7 @@ export class TrainingUI {
     this.isInitialized = false;
     
     // UI elements
-    this.startButton = null;
-    this.pauseButton = null;
+    this.toggleButton = null;
     this.stopButton = null;
     this.progressBar = null;
     this.metricsDisplay = null;
@@ -182,12 +181,7 @@ export class TrainingUI {
         <h3>RL Training</h3>
         
         <div class="control-buttons">
-          <button id="start-training" class="control-button">Start Training</button>
-          <button id="pause-training" class="control-button" disabled>Pause</button>
-          <button id="stop-training" class="control-button" disabled>Stop</button>
-          <button id="export-weights" class="control-button">Export Weights</button>
-          <button id="import-weights" class="control-button">Import Weights</button>
-          <input id="import-weights-file" type="file" accept="application/json" style="display:none" />
+          <button id="toggle-training" class="control-button">Start Training</button>
         </div>
         
         <div class="training-status">
@@ -204,9 +198,23 @@ export class TrainingUI {
             <span id="win-rate" class="status-value">0%</span>
           </div>
         </div>
-        
+
+        <div class="progress-container">
+          <div class="progress-label">Training Progress</div>
+          <div class="progress-bar">
+            <div id="progress-fill" class="progress-fill"></div>
+          </div>
+        </div>
+
         <div class="opponent-config">
-          <h4>Opponent Settings</h4>
+          <h3>Blue (Player) Settings</h3>
+          <button id="export-weights" class="control-button">Export Weights</button>
+          <button id="import-weights" class="control-button">Import Weights</button>
+          <input id="import-weights-file" type="file" accept="application/json" style="display:none" />
+        </div>
+
+        <div class="opponent-config">
+          <h3>Red (Opponent) Settings</h3>
           <div id="opp-options-list"></div>
           <div style="margin-top:8px;">
             <button id="opp-add-policy" class="control-button">Add Policy (Upload JSON)</button>
@@ -215,8 +223,8 @@ export class TrainingUI {
           </div>
         </div>
 
-        <div class="training-params" style="margin-top:16px; border:1px solid #444; padding:12px; border-radius:4px;">
-          <h4>Training Parameters</h4>
+        <div class="training-params" style="margin:16px 0; border:1px solid #444; padding:12px; border-radius:4px;">
+          <h3>Training Parameters</h3>
           <details>
             <summary style="cursor:pointer; margin-bottom:8px;">Training Hyperparameters</summary>
             <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:8px; font-size:12px;">
@@ -244,13 +252,6 @@ export class TrainingUI {
             </div>
           </details>
           <button id="reset-training-params" class="control-button" style="margin-top:8px;">Reset to Defaults</button>
-        </div>
-
-        <div class="progress-container">
-          <div class="progress-label">Training Progress</div>
-          <div class="progress-bar">
-            <div id="progress-fill" class="progress-fill"></div>
-          </div>
         </div>
         
         <div class="metrics-display">
@@ -305,8 +306,7 @@ export class TrainingUI {
     `;
 
     // Get references to UI elements
-    this.startButton = document.getElementById('start-training');
-    this.pauseButton = document.getElementById('pause-training');
+    this.toggleButton = document.getElementById('toggle-training');
     this.stopButton = document.getElementById('stop-training');
     this.exportButton = document.getElementById('export-weights');
     this.importButton = document.getElementById('import-weights');
@@ -721,15 +721,9 @@ export class TrainingUI {
    * Set up event listeners
    */
   setupEventListeners() {
-    if (this.startButton) {
-      this.startButton.addEventListener('click', () => {
-        this.startTraining();
-      });
-    }
-
-    if (this.pauseButton) {
-      this.pauseButton.addEventListener('click', () => {
-        this.pauseTraining();
+    if (this.toggleButton) {
+      this.toggleButton.addEventListener('click', () => {
+        this.toggleTraining();
       });
     }
 
@@ -792,7 +786,7 @@ export class TrainingUI {
   renderOpponentOptions() {
     if (!this.oppListContainer) return;
     const opts = this.opponentManager.getOptions();
-    const html = [`<table style="width:100%; font-size:12px;"><thead><tr><th style="text-align:left;">Label</th><th>Type</th><th>Weight</th><th></th></tr></thead><tbody>`];
+    const html = [`<table style="width:100%; font-size:12px;"><thead><tr><th style="text-align:center;">Label</th><th>Type</th><th>Weight</th><th></th></tr></thead><tbody>`];
     for (const o of opts) {
       html.push(
         `<tr>
@@ -877,7 +871,12 @@ export class TrainingUI {
         this.updateGameEnd(winner, gamesCompleted, metrics);
       };
       
+      trainingSession.onRolloutStart = () => {
+        this.updateStatus('Collecting experience...');
+      };
+      
       trainingSession.onTrainingProgress = (metrics) => {
+        this.updateStatus('Training...');
         this.updateTrainingProgress(metrics);
       };
       
@@ -905,6 +904,27 @@ export class TrainingUI {
   // removed test chart debug utilities (forceChartInitialization, waitForChartJS, loadChartJSManually, addTestData)
 
   /**
+   * Toggle training (start/pause/resume)
+   */
+  async toggleTraining() {
+    if (!this.trainingSession) {
+      console.error('No training session available');
+      return;
+    }
+
+    // If not training, start training
+    if (!this.trainingSession.isTraining) {
+      await this.startTraining();
+    } else if (this.trainingSession.isPaused) {
+      // If paused, resume
+      this.pauseTraining(); // This will resume since it's already paused
+    } else {
+      // If training, pause
+      this.pauseTraining();
+    }
+  }
+
+  /**
    * Start training
    */
   async startTraining() {
@@ -920,7 +940,7 @@ export class TrainingUI {
       
       await this.trainingSession.start();
       this.updateButtonStates('training');
-      this.updateStatus('Training...');
+      this.updateStatus('Collecting experience...');
       
       // Initialize chart only when training starts
       this.initializeChartForTraining();
@@ -983,20 +1003,12 @@ export class TrainingUI {
       // If already paused, resume training
       this.trainingSession.resume();
       this.updateButtonStates('training');
-      this.updateStatus('Training');
-      // Update button text back to Pause
-      if (this.pauseButton) {
-        this.pauseButton.textContent = 'Pause';
-      }
+      this.updateStatus('Collecting experience...');
     } else {
       // Pause training
       this.trainingSession.pause();
       this.updateButtonStates('paused');
       this.updateStatus('Paused');
-      // Update button text to show it can resume
-      if (this.pauseButton) {
-        this.pauseButton.textContent = 'Resume';
-      }
     }
     
     // Keep charts visible when training is paused
@@ -1033,19 +1045,17 @@ export class TrainingUI {
    */
   updateButtonStates(state) {
     const states = {
-      ready: { start: false, pause: true, stop: true },
-      training: { start: true, pause: false, stop: false },
-      paused: { start: false, pause: false, stop: false },
-      stopped: { start: false, pause: true, stop: true }
+      ready: { toggle: false, toggleText: 'Start Training', stop: true },
+      training: { toggle: false, toggleText: 'Pause', stop: false },
+      paused: { toggle: false, toggleText: 'Resume', stop: false },
+      stopped: { toggle: false, toggleText: 'Start Training', stop: true }
     };
 
     const buttonState = states[state] || states.ready;
     
-    if (this.startButton) {
-      this.startButton.disabled = buttonState.start;
-    }
-    if (this.pauseButton) {
-      this.pauseButton.disabled = buttonState.pause;
+    if (this.toggleButton) {
+      this.toggleButton.disabled = buttonState.toggle;
+      this.toggleButton.textContent = buttonState.toggleText;
     }
     if (this.stopButton) {
       this.stopButton.disabled = buttonState.stop;
@@ -1162,14 +1172,6 @@ export class TrainingUI {
       trainingTimeElement.textContent = `${timeSeconds}s`;
     }
 
-    // Debug metrics object
-    if (this.trainingSession && this.trainingSession.isTraining && metrics && metrics.gamesCompleted > 0) {
-      console.log('Metrics object:', metrics);
-      console.log('Reward stats:', metrics.rewardStats);
-      console.log('Win rate:', metrics.winRate);
-      console.log('Average game length:', metrics.averageGameLength);
-      console.log('Games completed:', metrics.gamesCompleted);
-    }
   }
 
   /**
@@ -1182,7 +1184,7 @@ export class TrainingUI {
     }
 
     const maxGames = this.trainingSession.options.maxGames;
-    const progress = Math.min((gamesCompleted / maxGames) * 100, 100);
+    let progress = Math.min((gamesCompleted / maxGames) * 100 + 1, 100);
     this.progressBar.style.width = `${progress}%`;
   }
 
@@ -1241,7 +1243,7 @@ export class TrainingUI {
     console.log(`Updating chart with batch ${this.batchNumber} at game ${metrics.gamesCompleted}: avg=${batchStats.avg}, min=${batchStats.min}, max=${batchStats.max}`);
 
     // Add new data point (after each experience collection phase)
-    this.chart.data.labels.push(`Batch ${this.batchNumber}`);
+    this.chart.data.labels.push(`Rollout ${this.batchNumber}`);
     this.chart.data.datasets[0].data.push(batchStats.avg);
     this.chart.data.datasets[1].data.push(batchStats.min);
     this.chart.data.datasets[2].data.push(batchStats.max);
@@ -1293,7 +1295,7 @@ export class TrainingUI {
     if (!this.gameLengthChart) return;
     
     // Add new data point
-    this.gameLengthChart.data.labels.push(`Batch ${batchNumber}`);
+    this.gameLengthChart.data.labels.push(`Rollout ${batchNumber}`);
     this.gameLengthChart.data.datasets[0].data.push(batchStats.avgGameLength);
     
     // Keep only last N data points
@@ -1322,7 +1324,7 @@ export class TrainingUI {
       tieRatePercent: batchStats.tieRate,
       gamesCompleted: this.trainingSession?.gamesCompleted
     });
-    this.winRateChart.data.labels.push(`Batch ${batchNumber}`);
+    this.winRateChart.data.labels.push(`Rollout ${batchNumber}`);
     this.winRateChart.data.datasets[0].data.push(batchStats.winRate || 0);   // Win rate
     this.winRateChart.data.datasets[1].data.push(batchStats.lossRate || 0); // Loss rate
     this.winRateChart.data.datasets[2].data.push(batchStats.tieRate || 0);   // Tie rate
@@ -1349,7 +1351,7 @@ export class TrainingUI {
     const trainerStats = (this.trainingSession && this.trainingSession.trainer && this.trainingSession.trainer.getStats) ? this.trainingSession.trainer.getStats() : {};
     const fallbackEntropy = trainerStats.entropy || 0;
     const entropy = typeof batchStats.policyEntropy === 'number' ? batchStats.policyEntropy : fallbackEntropy;
-    this.entropyChart.data.labels.push(`Batch ${batchNumber}`);
+    this.entropyChart.data.labels.push(`Rollout ${batchNumber}`);
     this.entropyChart.data.datasets[0].data.push(entropy);
     const maxPoints = GameConfig.rl.chartMaxDataPoints;
     if (this.entropyChart.data.labels.length > maxPoints) {
@@ -1366,7 +1368,7 @@ export class TrainingUI {
     if (!this.policyLossChart) return;
     const trainerStats = (this.trainingSession && this.trainingSession.trainer && this.trainingSession.trainer.getStats) ? this.trainingSession.trainer.getStats() : {};
     const loss = trainerStats.policyLoss || 0;
-    this.policyLossChart.data.labels.push(`Batch ${batchNumber}`);
+    this.policyLossChart.data.labels.push(`Rollout ${batchNumber}`);
     this.policyLossChart.data.datasets[0].data.push(loss);
     const maxPoints = GameConfig.rl.chartMaxDataPoints;
     if (this.policyLossChart.data.labels.length > maxPoints) {
@@ -1383,7 +1385,7 @@ export class TrainingUI {
     if (!this.valueLossChart) return;
     const trainerStats = (this.trainingSession && this.trainingSession.trainer && this.trainingSession.trainer.getStats) ? this.trainingSession.trainer.getStats() : {};
     const loss = trainerStats.valueLoss || 0;
-    this.valueLossChart.data.labels.push(`Batch ${batchNumber}`);
+    this.valueLossChart.data.labels.push(`Rollout ${batchNumber}`);
     this.valueLossChart.data.datasets[0].data.push(loss);
     const maxPoints = GameConfig.rl.chartMaxDataPoints;
     if (this.valueLossChart.data.labels.length > maxPoints) {

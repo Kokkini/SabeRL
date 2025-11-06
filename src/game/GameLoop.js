@@ -5,6 +5,7 @@
 
 import { GameConfig } from '../config/config.js';
 import { Renderer } from './Renderer.js';
+import { HumanController } from './controllers/HumanController.js';
 
 export class GameLoop {
   /**
@@ -16,6 +17,9 @@ export class GameLoop {
     this.controller = controller;
     this.renderer = renderer instanceof Renderer ? renderer : null;
     this.lastObservation = null;
+    this.playerActionInterval = (GameConfig?.rl?.rollout?.actionIntervalSeconds ?? 0.2);
+    this.playerDecisionTimer = this.playerActionInterval; // allow immediate first decision
+    this._lastPlayerMask = [false, false, false, false];
     this._isRunning = false;
     this.lastTime = 0;
     this.accumulator = 0;
@@ -59,6 +63,8 @@ export class GameLoop {
 
   setInitialObservation(observation) {
     this.lastObservation = observation || null;
+    // ensure first frame decides immediately after reset
+    this.playerDecisionTimer = this.playerActionInterval;
   }
 
   /**
@@ -139,7 +145,22 @@ export class GameLoop {
   update(deltaTime) {
     // Decide action, step core
     if (this.core && this.controller) {
-      const mask = this.controller.decide(this.lastObservation, deltaTime);
+      // Throttle player decisions by actionIntervalSeconds (only for non-human controllers)
+      const isHuman = this.controller instanceof HumanController;
+      let mask;
+      if (isHuman) {
+        // Human controller: no throttling, get fresh decision every frame
+        mask = this.controller.decide(this.lastObservation, deltaTime) || this._lastPlayerMask;
+        this._lastPlayerMask = mask;
+      } else {
+        // Policy controller: throttle decisions
+        this.playerDecisionTimer += deltaTime;
+        if (this.playerDecisionTimer >= this.playerActionInterval) {
+          this._lastPlayerMask = this.controller.decide(this.lastObservation, deltaTime) || this._lastPlayerMask;
+          this.playerDecisionTimer = 0;
+        }
+        mask = this._lastPlayerMask;
+      }
       const result = this.core.step(mask, deltaTime);
       this.lastObservation = result ? result.observation : this.lastObservation;
       if (result && result.done) {

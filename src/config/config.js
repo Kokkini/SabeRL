@@ -35,9 +35,6 @@ export function validateConfig(config = GameConfig) {
   if (config.rl.discountFactor < 0 || config.rl.discountFactor > 1) {
     errors.push('Discount factor must be between 0 and 1');
   }
-  if (config.rl.decisionInterval <= 0) {
-    errors.push('Decision interval must be positive');
-  }
   if (config.rl.parallelGames <= 0) {
     errors.push('Parallel games must be positive');
   }
@@ -102,7 +99,6 @@ export function applyDefaults(config) {
       learningRate: 0.001,
       explorationRate: 0.1,
       discountFactor: 0.99,
-      decisionInterval: 0.2,
       parallelGames: 10,
       algorithm: 'PPO',
       maxMemoryUsage: 2 * 1024 * 1024 * 1024,
@@ -238,7 +234,6 @@ export const GameConfig = {
     gaeLambda: 0.95,           // GAE lambda parameter (typically 0.9-0.99)
     
     // Game settings
-    decisionInterval: 0.2, // seconds between AI decisions
     parallelGames: 1,   // number of parallel training games
     
     // Training algorithms

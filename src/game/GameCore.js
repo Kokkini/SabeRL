@@ -23,6 +23,9 @@ export class GameCore {
 
     // Optional opponent controller (when using policy-driven opponent)
     this.opponentController = null;
+    this._opponentActionInterval = (this.config?.rl?.rollout?.actionIntervalSeconds ?? 0.2);
+    this._opponentDecisionTimer = this._opponentActionInterval; // allow immediate first decision
+    this._lastOpponentMask = [false, false, false, false];
   }
 
   reset() {
@@ -68,6 +71,8 @@ export class GameCore {
     this.startTimeMs = Date.now();
     this.endTimeMs = 0;
     this.previousDistance = this.#computePlayersDistance();
+    // reset opponent decision timer for immediate first decision
+    this._opponentDecisionTimer = this._opponentActionInterval;
 
     return this.#buildObservation();
   }
@@ -93,11 +98,15 @@ export class GameCore {
     // Advance physics: move player from desiredActionMask, update sabers, update AI/opponent
     this.#updatePlayerFromMask(player, deltaTime);
     if (player?.saber) player.saber.update(deltaTime);
-    // Opponent control: if a controller is present, use its decision; otherwise run built-in AI
+    // Opponent control: if a controller is present, throttle decisions; otherwise run built-in AI
     if (this.opponentController && this.ais[0]) {
-      const obs = this.#buildObservation();
-      const oppMask = this.opponentController.decide(obs, deltaTime) || [false,false,false,false];
-      this.#updateOpponentFromMask(this.ais[0], deltaTime, oppMask);
+      this._opponentDecisionTimer += deltaTime;
+      if (this._opponentDecisionTimer >= this._opponentActionInterval) {
+        const obs = this.#buildObservation();
+        this._lastOpponentMask = this.opponentController.decide(obs, deltaTime) || this._lastOpponentMask;
+        this._opponentDecisionTimer = 0;
+      }
+      this.#updateOpponentFromMask(this.ais[0], deltaTime, this._lastOpponentMask);
       if (this.ais[0]?.saber) this.ais[0].saber.update(deltaTime);
     } else {
       for (const ai of this.ais) {

@@ -118,8 +118,11 @@ export class RolloutCollector {
       // Update observation for next iteration
       observation = newObservation;
       
-      // If game ended, restart
+      // If game ended, notify and restart
       if (done) {
+        if (typeof this.hooks.onEpisodeEnd === 'function') {
+          try { this.hooks.onEpisodeEnd(lastOutcome || null); } catch (_) {}
+        }
         observation = this.core.reset();
         // New episode: re-sample opponent
         if (typeof this.hooks.sampleOpponent === 'function') {

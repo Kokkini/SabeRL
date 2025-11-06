@@ -31,7 +31,11 @@ header {
 header h1 {
     font-size: 2.5em;
     color: #4a9eff;
-    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+    text-shadow: 
+        0 0 10px rgba(74, 158, 255, 0.8),
+        0 0 20px rgba(74, 158, 255, 0.6),
+        0 0 30px rgba(74, 158, 255, 0.4),
+        2px 2px 4px rgba(0, 0, 0, 0.5);
     margin-bottom: 10px;
 }
 
@@ -68,9 +72,10 @@ main {
 
 #game-ui {
     display: flex;
-    gap: 40px;
-    justify-content: center;
-    flex-wrap: wrap;
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    gap: 20px;
 }
 
 #game-status {
@@ -487,6 +492,7 @@ footer {
     background: linear-gradient(90deg, #4a9eff, #357abd);
     width: 0%;
     transition: width 0.3s ease;
+    border-radius: 10px;
 }
 
 .metrics-display {
@@ -543,6 +549,13 @@ footer {
     background: rgba(0, 0, 0, 0.3);
     border-radius: 5px;
     border: 1px solid #333;
+}
+
+.opponent-config {
+    margin-top: 15px;
+    border: 1px solid #444;
+    padding: 12px;
+    border-radius: 4px;
 }
 
 /* Print styles */
