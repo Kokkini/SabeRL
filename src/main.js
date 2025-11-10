@@ -309,12 +309,6 @@ class SabeRLArena {
         this.gameLoop.setInitialObservation(initialObservation);
       }
       this.gameLoop.start();
-      
-      // Hide start button when game starts
-      const startButton = document.getElementById('start-game-button');
-      if (startButton) {
-        startButton.style.display = 'none';
-      }
     } catch (error) {
       console.error('Error starting game:', error);
       // Show start button again on error

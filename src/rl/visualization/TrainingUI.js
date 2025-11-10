@@ -176,12 +176,138 @@ export class TrainingUI {
         .chart-container canvas {
           max-height: 300px !important;
         }
+        .instructions-modal {
+          display: none;
+          position: fixed;
+          z-index: 10000;
+          left: 0;
+          top: 0;
+          width: 100%;
+          height: 100%;
+          background-color: rgba(0, 0, 0, 0.7);
+          overflow: auto;
+        }
+        .instructions-modal-content {
+          background-color: #1a1a1a;
+          margin: 5% auto;
+          padding: 30px;
+          border: 2px solid #4a9eff;
+          border-radius: 10px;
+          width: 80%;
+          max-width: 800px;
+          max-height: 80vh;
+          overflow-y: auto;
+          color: #e0e0e0;
+          box-shadow: 0 4px 20px rgba(74, 158, 255, 0.3);
+          text-align: left;
+        }
+        .instructions-modal-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 20px;
+          border-bottom: 2px solid #4a9eff;
+          padding-bottom: 15px;
+        }
+        .instructions-modal-header h2 {
+          margin: 0;
+          color: #4a9eff;
+        }
+        .instructions-close {
+          color: #aaa;
+          font-size: 28px;
+          font-weight: bold;
+          cursor: pointer;
+          background: none;
+          border: none;
+          padding: 0;
+          width: 30px;
+          height: 30px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .instructions-close:hover,
+        .instructions-close:focus {
+          color: #4a9eff;
+        }
+        .instructions-section {
+          margin-bottom: 10px;
+          text-align: left;
+          border: 1px solid #333;
+          border-radius: 5px;
+          overflow: hidden;
+        }
+        .instructions-section-header {
+          background-color: #2a2a2a;
+          padding: 15px 20px;
+          cursor: pointer;
+          user-select: none;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          transition: background-color 0.2s;
+        }
+        .instructions-section-header:hover {
+          background-color: #333;
+        }
+        .instructions-section-header h3 {
+          color: #4a9eff;
+          margin: 0;
+          font-size: 1.2em;
+          text-align: left;
+          flex: 1;
+        }
+        .instructions-section-toggle {
+          color: #4a9eff;
+          font-size: 1.5em;
+          font-weight: bold;
+          transition: transform 0.3s;
+          margin-left: 15px;
+        }
+        .instructions-section.expanded .instructions-section-toggle {
+          transform: rotate(90deg);
+        }
+        .instructions-section-content {
+          max-height: 0;
+          overflow: hidden;
+          transition: max-height 0.3s ease-out, padding 0.3s ease-out;
+          padding: 0 20px;
+        }
+        .instructions-section.expanded .instructions-section-content {
+          max-height: 2000px;
+          padding: 20px;
+        }
+        .instructions-section-content p {
+          margin: 8px 0;
+          line-height: 1.6;
+          text-align: left;
+        }
+        .instructions-section-content ul {
+          margin: 10px 0;
+          padding-left: 25px;
+          text-align: left;
+        }
+        .instructions-section-content li {
+          margin: 8px 0;
+          line-height: 1.6;
+          text-align: left;
+        }
+        .instructions-code {
+          background-color: #2a2a2a;
+          padding: 10px;
+          border-radius: 5px;
+          font-family: monospace;
+          margin: 10px 0;
+          border-left: 3px solid #4a9eff;
+        }
       </style>
       <div class="training-controls">
-        <h3>RL Training</h3>
+        <h3>Train an AI Agent to Play the Game for You</h3>
         
         <div class="control-buttons">
           <button id="toggle-training" class="control-button">Start Training</button>
+          <button id="instructions-button" class="control-button">Instructions</button>
         </div>
         
         <div class="training-status">
@@ -303,10 +429,114 @@ export class TrainingUI {
           <canvas id="value-loss-chart" width="400" height="300"></canvas>
         </div>
       </div>
+      
+      <!-- Instructions Modal -->
+      <div id="instructions-modal" class="instructions-modal">
+        <div class="instructions-modal-content">
+          <div class="instructions-modal-header">
+            <h2>Training Instructions</h2>
+            <button class="instructions-close" id="instructions-close">&times;</button>
+          </div>
+          
+          <p style="margin: 0 0 20px 0; padding: 0 20px; color: #e0e0e0; line-height: 1.6;">You can train an AI agent to play the game for you. The agent learns by playing thousands of games and gradually improves its strategy. Use the sections below to get started.</p>
+          
+          <div class="instructions-section">
+            <div class="instructions-section-header">
+              <h3>Training Your Own Agent</h3>
+              <span class="instructions-section-toggle">▶</span>
+            </div>
+            <div class="instructions-section-content">
+              <p>Click <strong>"Start Training"</strong>. The agent plays thousands of games in the background and learns automatically. Click "Pause" to stop.</p>
+              <p>By default, it trains against a random opponent. Watch the win rate increase as it improves.</p>
+            </div>
+          </div>
+
+          <div class="instructions-section">
+            <div class="instructions-section-header">
+              <h3>Seeing Your Trained Agent Play the Game</h3>
+              <span class="instructions-section-toggle">▶</span>
+            </div>
+            <div class="instructions-section-content">
+              <p>Click <strong>"Enable AI Control"</strong>, then <strong>"Start Game"</strong>. Your trained agent controls blue, opponent controls red. Watch and learn!</p>
+            </div>
+          </div>
+          
+          <div class="instructions-section">
+            <div class="instructions-section-header">
+              <h3>Seeing the Agent Training Progress</h3>
+              <span class="instructions-section-toggle">▶</span>
+            </div>
+            <div class="instructions-section-content">
+              <p>Watch the <strong>Win Rate</strong> increase as your agent improves. Scroll down for detailed charts:</p>
+              <ul>
+                <li><strong>Reward Progress:</strong> Average rewards over time (upward = good)</li>
+                <li><strong>Win / Loss / Tie Rates:</strong> Game outcome percentages. Win rates should increase with training.</li>
+                <li><strong>Average Game Length:</strong> How long games last. Should decrease with training.</li>
+                <li><strong>Policy Entropy:</strong> Exploration vs exploitation balance (higher = more exploration)</li>
+                <li><strong>Policy Loss:</strong> How much the policy is changing (decreasing = stabilizing)</li>
+                <li><strong>Value Loss:</strong> Quality of reward predictions (lower = better)</li>
+              </ul>
+            </div>
+          </div>
+          
+          <div class="instructions-section">
+            <div class="instructions-section-header">
+              <h3>Saving and Restoring Training Progress</h3>
+              <span class="instructions-section-toggle">▶</span>
+            </div>
+            <div class="instructions-section-content">
+              <p><strong>Save:</strong> Click <strong>"Export Weights"</strong> in "Blue (Player) Settings". A JSON file downloads with your agent's state.</p>
+              <p><strong>Restore:</strong> Click <strong>"Import Weights"</strong> and select your saved JSON file. Training continues from that point.</p>
+            </div>
+          </div>
+          
+          <div class="instructions-section">
+            <div class="instructions-section-header">
+              <h3>Playing Against Your Trained Agent</h3>
+              <span class="instructions-section-toggle">▶</span>
+            </div>
+            <div class="instructions-section-content">
+              <p>1. Export your trained agent's weights (see "Save and Restore" section).</p>
+              <p>2. In "Opponent Settings", click <strong>"Add Policy (Upload JSON)"</strong> and select your exported file.</p>
+              <p>3. Set random opponent weight to 0.</p>
+              <p>4. Click <strong>"Start Game"</strong>. Control blue with WASD keys. Your agent controls red.</p>
+            </div>
+          </div>
+          
+          <div class="instructions-section">
+            <div class="instructions-section-header">
+              <h3>Training Another Agent to Beat Your Trained Agent</h3>
+              <span class="instructions-section-toggle">▶</span>
+            </div>
+            <div class="instructions-section-content">
+              <p>Follow the previous section to add your trained agent as an opponent, then click <strong>"Start Training"</strong>. The new agent learns to beat your trained agent. Repeat to create stronger agents!</p>
+            </div>
+          </div>
+          
+          <div class="instructions-section">
+            <div class="instructions-section-header">
+              <h3>Advanced: Customizing Training Parameters</h3>
+              <span class="instructions-section-toggle">▶</span>
+            </div>
+            <div class="instructions-section-content">
+              <p>Adjust parameters in "Training Parameters":</p>
+              <ul>
+                <li><strong>Learning Rate:</strong> Speed of learning (lower = stable, higher = fast)</li>
+                <li><strong>Reward Structure:</strong> Reward for the agent to win, lose, tie, etc.</li>
+                <li><strong>Other:</strong> Batch size, epochs, discount factor, and more</li>
+              </ul>
+              <p>Settings auto-save. Use "Reset to Defaults" to restore originals.</p>
+            </div>
+          </div>
+        </div>
+      </div>
     `;
 
     // Get references to UI elements
     this.toggleButton = document.getElementById('toggle-training');
+    this.instructionsButton = document.getElementById('instructions-button');
+    this.instructionsModal = document.getElementById('instructions-modal');
+    this.instructionsClose = document.getElementById('instructions-close');
     this.stopButton = document.getElementById('stop-training');
     this.exportButton = document.getElementById('export-weights');
     this.importButton = document.getElementById('import-weights');
@@ -724,6 +954,60 @@ export class TrainingUI {
     if (this.toggleButton) {
       this.toggleButton.addEventListener('click', () => {
         this.toggleTraining();
+      });
+    }
+
+    // Instructions modal
+    if (this.instructionsButton) {
+      this.instructionsButton.addEventListener('click', () => {
+        if (this.instructionsModal) {
+          this.instructionsModal.style.display = 'block';
+        }
+      });
+    }
+
+    if (this.instructionsClose) {
+      this.instructionsClose.addEventListener('click', () => {
+        if (this.instructionsModal) {
+          this.instructionsModal.style.display = 'none';
+        }
+      });
+    }
+
+    // Close modal when clicking outside of it
+    if (this.instructionsModal) {
+      this.instructionsModal.addEventListener('click', (e) => {
+        if (e.target === this.instructionsModal) {
+          this.instructionsModal.style.display = 'none';
+        }
+      });
+    }
+
+    // Close modal with Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.instructionsModal && this.instructionsModal.style.display === 'block') {
+        this.instructionsModal.style.display = 'none';
+      }
+    });
+
+    // Instructions accordion functionality
+    if (this.instructionsModal) {
+      const sections = this.instructionsModal.querySelectorAll('.instructions-section');
+      sections.forEach((section) => {
+        const header = section.querySelector('.instructions-section-header');
+        if (header) {
+          header.addEventListener('click', () => {
+            const isExpanded = section.classList.contains('expanded');
+            
+            // Collapse all sections
+            sections.forEach((s) => s.classList.remove('expanded'));
+            
+            // Expand clicked section if it wasn't already expanded
+            if (!isExpanded) {
+              section.classList.add('expanded');
+            }
+          });
+        }
       });
     }
 
