@@ -97,7 +97,7 @@ interface GameState {
  * Action is an array of numbers
  * Each element can represent:
  *   - Discrete action: 0 or 1 (button press)
- *   - Continuous action: any number in a range (e.g., mouse position, joystick)
+ *   - Continuous action: any real-valued number (original units; no normalization)
  * Example: [1, 0, 0.5, -0.3] means action 0 is active (1), action 1 is inactive (0),
  *         action 2 is continuous (0.5), action 3 is continuous (-0.3)
  */
@@ -111,21 +111,9 @@ interface ActionSpace {
   /**
    * Type of action space
    * - 'discrete': Binary action (0 or 1)
-   * - 'continuous': Continuous value in [low, high] range
+   * - 'continuous': Continuous action in original units; no normalization is applied
    */
   type: 'discrete' | 'continuous';
-  
-  /**
-   * For continuous actions: minimum value (inclusive)
-   * For discrete actions: ignored
-   */
-  low?: number;
-  
-  /**
-   * For continuous actions: maximum value (inclusive)
-   * For discrete actions: ignored
-   */
-  high?: number;
 }
 ```
 
@@ -184,6 +172,8 @@ class PolicyAgent {
     actionSize: number;       // Size of action (number of actions)
     actionSpaces: ActionSpace[];  // Action space for each action index
     neuralNetwork?: NeuralNetwork;
+    valueNetwork?: tf.LayersModel; // Optional value network held internally
+    initialStd?: number; // Initial std for continuous actions (learnable scalar)
   }) {
     this.observationSize = config.observationSize;
     this.actionSize = config.actionSize;
@@ -192,18 +182,21 @@ class PolicyAgent {
       throw new Error(`Action spaces length (${this.actionSpaces.length}) must match action size (${this.actionSize})`);
     }
     this.neuralNetwork = config.neuralNetwork || this.createDefaultNetwork();
+    this.valueNetwork = config.valueNetwork || null;
+    // Single learnable std parameter shared across all continuous action dimensions
+    const initStd = config.initialStd ?? 0.1;
+    this.learnableStd = tf.variable(tf.scalar(initStd), true); // trainable
   }
 
   /**
    * Act on normalized observation vector
    * @param {number[]} observation - Normalized feature vector (game-agnostic)
-   * @param {tf.LayersModel} valueModel - Optional value model for value estimation
    * @returns {Object} {action: Action, logProb: number, value: number}
    *   - action: Action (number array)
    *   - logProb: Log probability of the sampled action
-   *   - value: Value estimate (if valueModel provided, otherwise 0)
+   *   - value: Value estimate (if value network provided, otherwise 0)
    */
-  act(observation: number[], valueModel?: tf.LayersModel): { action: Action, logProb: number, value: number } {
+  act(observation: number[]): { action: Action, logProb: number, value: number } {
     // Validate input is correct size
     if (observation.length !== this.observationSize) {
       throw new Error(`Observation size mismatch: expected ${this.observationSize}, got ${observation.length}`);
@@ -215,7 +208,7 @@ class PolicyAgent {
     // Get action outputs from neural network
     // Network outputs depend on action space types:
     // - For discrete: sigmoid output (probability)
-    // - For continuous: tanh output (scaled to [-1, 1], then mapped to [low, high])
+    // - For continuous: direct mean in original action units (no normalization)
     const output = this.neuralNetwork.model.predict(input);
     const outputArray = Array.from(output.dataSync());
     
@@ -243,28 +236,17 @@ class PolicyAgent {
           ? Math.log(prob + 1e-8)
           : Math.log(1 - prob + 1e-8);
       } else if (actionSpace.type === 'continuous') {
-        // Continuous: Use reparameterization trick
-        // Network outputs mean (in [-1, 1] via tanh), we add noise and map to [low, high]
-        const meanNormalized = Math.tanh(outputArray[i]);  // Mean in [-1, 1]
-        const std = 0.1;  // Standard deviation for exploration
+        // Continuous: Use reparameterization trick in original action units
+        // Network outputs mean directly; std is a single learnable scalar shared across dimensions
+        const mean = outputArray[i];  // Mean in original units
+        const std = this.learnableStd.dataSync()[0];
+        const epsilon_i = epsilonArray[i]; // epsilon ~ N(0, 1)
+        const sampled = mean + std * epsilon_i;
+        action[i] = sampled;
         
-        // Reparameterization: action = mean + std * epsilon
-        // where epsilon ~ N(0, 1) is sampled from standard normal
-        const epsilon_i = epsilonArray[i];
-        const actionNormalized = meanNormalized + std * epsilon_i;
-        
-        // Map from [-1, 1] to [low, high]
-        const low = actionSpace.low ?? -1;
-        const high = actionSpace.high ?? 1;
-        const mapped = low + (actionNormalized + 1) / 2 * (high - low);
-        action[i] = mapped;
-        
-        // Log probability using reparameterization trick
-        // For Normal(mean, std), log_prob = -0.5 * log(2πσ²) - 0.5 * ((x - μ) / σ)²
-        // Since we use actionNormalized (before mapping), we compute log prob in normalized space
-        // The mapping is linear, so the log prob is the same (just in different scale)
-        const mean = meanNormalized;
-        const x = actionNormalized;
+        // Log probability under Normal(mean, std) in original units
+        // log_prob = -0.5 * log(2πσ²) - 0.5 * ((x - μ) / σ)²
+        const x = sampled;
         logProbs[i] = -0.5 * Math.log(2 * Math.PI * std * std) - 0.5 * Math.pow((x - mean) / std, 2);
       }
     }
@@ -275,10 +257,10 @@ class PolicyAgent {
     // Total log probability is sum of individual log probabilities
     const logProb = logProbs.reduce((sum, lp) => sum + lp, 0);
     
-    // Get value estimate if value model provided
+    // Get value estimate if value network is available
     let value = 0;
-    if (valueModel) {
-      const valueOutput = valueModel.predict(input);
+    if (this.valueNetwork) {
+      const valueOutput = this.valueNetwork.predict(input);
       value = valueOutput.squeeze().dataSync()[0];
       valueOutput.dispose();
     }
@@ -309,10 +291,8 @@ class RandomController implements PlayerController {
       if (space.type === 'discrete') {
         return Math.random() < 0.25 ? 1 : 0;
       } else {
-        // Continuous: random value in [low, high]
-        const low = space.low ?? -1;
-        const high = space.high ?? 1;
-        return low + Math.random() * (high - low);
+        // Continuous: sample from standard normal in original units
+        return tf.randomNormal([1]).dataSync()[0];
       }
     });
   }
@@ -778,7 +758,7 @@ class TrainingSession {
         // For trainable players, get action, logProb, and value from PolicyAgent
         if (this.trainablePlayers.includes(i)) {
           const agent = this.policyAgents[i];
-          const result = agent.act(normalizedObs, this.valueModel);
+          const result = agent.act(normalizedObs);
           actions[i] = result.action;
           logProbs[i] = result.logProb;
           values[i] = result.value;
@@ -926,8 +906,8 @@ class SoccerGameCore {
       { type: 'discrete' },  // right
       { type: 'discrete' },  // kick
       { type: 'discrete' },  // pass
-      { type: 'continuous', low: -1, high: 1 },  // mouseX
-      { type: 'continuous', low: -1, high: 1 }   // mouseY
+      { type: 'continuous' },  // mouseX
+      { type: 'continuous' }   // mouseY
     ];
   }
 }
@@ -950,15 +930,15 @@ const training = new RLTrainingSystem(gameCore, controllers, {
 The framework supports:
 1. **Actions**: Number arrays where each element can be:
    - Discrete (0 or 1) for button presses
-   - Continuous (any value in [low, high]) for analog inputs (mouse, joystick)
+   - Continuous real-valued actions in original units (no normalization/mapping)
 2. **Action Spaces**: Each action index has an associated `ActionSpace` that defines how to sample it
 3. **Observation Arrays**: Normalized number arrays (game-agnostic)
 4. **Reward Shaping**: Handled by GameCore
 
 This design makes the framework:
 - Flexible (supports both discrete and continuous actions in the same array)
-- Clear (action spaces explicitly define how each action is sampled)
-- Game-agnostic (GameCore defines action spaces, PolicyAgent uses them for sampling)
+- Clear (action spaces explicitly define how each action is sampled/validated)
+- Game-agnostic (GameCore defines action spaces; PolicyAgent samples continuous actions using mean from the network and a single learnable std)
 
 ## PPO Algorithm Adaptations for Mixed Action Types
 
@@ -970,11 +950,10 @@ The PPO algorithm needs to be adapted to handle mixed discrete/continuous action
    - **Current**: PPO assumes all actions are discrete (Bernoulli) and computes log probabilities using `log(prob)` for action=1 and `log(1-prob)` for action=0
    - **Required**: PPO must recompute log probabilities during training based on action spaces:
      - **Discrete actions**: Use Bernoulli distribution: `log(prob)` if action=1, `log(1-prob)` if action=0
-     - **Continuous actions**: Use reparameterization trick with Normal distribution:
-       - Sample `epsilon ~ N(0, 1)` (standard normal noise)
-       - Transform: `action_normalized = mean + std * epsilon`
-       - Map to [low, high]: `action = low + (action_normalized + 1) / 2 * (high - low)`
-       - Log prob: `-0.5 * log(2πσ²) - 0.5 * ((action_normalized - mean) / σ)²`
+     - **Continuous actions**: Use Normal distribution in original units:
+       - Policy outputs mean directly; std is a single learnable scalar shared across continuous dims
+       - Sampling: `action = mean + std * epsilon`, with `epsilon ~ N(0, 1)`
+       - Log prob: `-0.5 * log(2πσ²) - 0.5 * ((action - mean) / σ)²`
      - The total log probability is the sum of individual action log probabilities
    - **Why reparameterization**: Allows gradients to flow through the sampling process, making training more stable
 
@@ -999,9 +978,11 @@ The PPO algorithm needs to be adapted to handle mixed discrete/continuous action
   - Transforms: `action = mean + std * epsilon`
   - This allows gradients to flow through sampling, making training stable
 - **Stored experiences** have the correct `logProb` from the old policy
-- **During training**, PPO must recompute log probabilities from the current policy to compute the importance sampling ratio
-  - For continuous actions, PPO must use the same reparameterization trick with the same `epsilon` (or recompute using the stored action value)
-  - The trainer needs access to `actionSpaces` to know how to interpret each action value
+- **During training**, PPO recomputes log probabilities under the current policy to compute the importance sampling ratio
+  - For discrete actions: forward pass to get logits → sigmoid to get `prob` → compute `log(prob)` if action=1 or `log(1-prob)` if action=0
+  - For continuous actions: forward pass to get the current mean (original units); use the PolicyAgent’s single learnable `std`; compute
+    `log_prob = -0.5 * log(2πσ²) - 0.5 * ((action - mean) / σ)²` directly on the stored action value; do not reuse the old `epsilon`
+  - The trainer needs access to `actionSpaces` for metadata/validation, not for mapping
 - **Gradient flow**: The reparameterization trick ensures that gradients can flow from the loss back through the sampling operation to the policy network parameters
 
 ## Implementation Priority
