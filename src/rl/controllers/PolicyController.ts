@@ -1,12 +1,20 @@
 /**
  * PolicyController - Game-agnostic controller that uses a PolicyAgent
- * Implements PlayerController interface
+ * 
+ * This controller wraps a PolicyAgent and provides a simple interface for
+ * deciding actions based on normalized observations. It is part of the RL library
+ * and works with any game that implements the GameCore interface.
+ * 
+ * Location: src/rl/controllers/PolicyController.ts (library code)
+ * 
+ * @implements {PlayerController} - Implements the PlayerController interface
  */
 
-import { PolicyAgent } from '../../rl/agents/PolicyAgent.js';
-import { Action } from '../../rl/core/GameCore.js';
+import { PolicyAgent } from '../agents/PolicyAgent.js';
+import { Action } from '../core/GameCore.js';
+import { PlayerController } from './PlayerController.js';
 
-export class PolicyController {
+export class PolicyController implements PlayerController {
   private agent: PolicyAgent;
   private _activated: boolean;
 
@@ -17,8 +25,8 @@ export class PolicyController {
 
   /**
    * Decide on an action given a normalized observation vector
-   * @param {number[]} observation - Normalized observation vector
-   * @returns {Action} Action (number array)
+   * @param observation - Normalized observation vector
+   * @returns Action (number array)
    */
   decide(observation: number[]): Action {
     if (!this.agent || typeof this.agent.act !== 'function') {

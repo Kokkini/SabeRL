@@ -126,13 +126,13 @@ interface ActionSpace {
 }
 ```
 
-### 2. Player Controller Interface
+### 2. PlayerController Interface
+
+**Location:** `src/rl/controllers/PlayerController.ts` (library code)
+
+The `PlayerController` interface is defined in the RL library and serves as the contract that any controller must implement. This interface is game-agnostic and allows the RL library to work with any controller implementation.
 
 ```typescript
-/**
- * Game-agnostic controller interface
- * All controllers work with normalized observation vectors (number arrays)
- */
 interface PlayerController {
   /**
    * Decide on an action given a normalized observation vector
@@ -141,23 +141,19 @@ interface PlayerController {
    */
   decide(observation: number[]): Action;
 }
+```
 
-// Example implementations:
+**Key Points:**
+- Controllers receive normalized `number[]` observations (game-agnostic)
+- Controllers return `Action` (number array) - game-agnostic format
+- Any class implementing this interface can be used with the RL library
+- Examples: `PolicyController` (library code), `HumanController` (game-specific), `RandomController` (game-specific), `ScriptedController` (game-specific)
 
-/**
- * Human controller - reads from input devices
- * Still receives normalized observation vector (for consistency)
- */
-class HumanController implements PlayerController {
-  decide(observation: number[]): Action {
-    // Reads from keyboard/mouse, ignores observation
-    return this.getInput();
-  }
-}
+**Example implementations:**
 
 /**
- * Policy controller - uses trained neural network
- * Completely game-agnostic, only works with number arrays
+ * PolicyController - Library code (src/rl/controllers/PolicyController.ts)
+ * Uses trained neural network, completely game-agnostic
  */
 class PolicyController implements PlayerController {
   constructor(policyAgent: PolicyAgent) {
@@ -168,6 +164,17 @@ class PolicyController implements PlayerController {
     // PolicyAgent only sees normalized number array
     // act() returns {action, logProb, value}, we only need the action
     return this.agent.act(observation).action;
+  }
+}
+
+/**
+ * HumanController - Game-specific implementation (src/game/controllers/HumanController.js)
+ * Reads from input devices, still receives normalized observation vector (for consistency)
+ */
+class HumanController implements PlayerController {
+  decide(observation: number[]): Action {
+    // Reads from keyboard/mouse, ignores observation
+    return this.getInput();
   }
 }
 
@@ -522,6 +529,14 @@ class NetworkUtils {
  * });
  */
 
+/**
+ * Example Controller Implementations
+ * 
+ * These controllers implement the PlayerController interface from the RL library.
+ * They can be used with any game that implements the GameCore interface.
+ */
+
+// Example: RandomController (game-specific implementation)
 class RandomController implements PlayerController {
   constructor(actionSpaces: ActionSpace[]) {
     this.actionSpaces = actionSpaces;
@@ -541,6 +556,7 @@ class RandomController implements PlayerController {
   }
 }
 
+// Example: ScriptedController (game-specific implementation)
 class ScriptedController implements PlayerController {
   constructor(actionSpaces: ActionSpace[]) {
     this.actionSpaces = actionSpaces;
@@ -1434,30 +1450,36 @@ export class RolloutCollector {
 - Remove `valueModel` parameter - value network is inside PolicyAgent
 - Handle multiple players in actions array
 
-### Step 5: Update Controllers to Match PlayerController Interface
+### Step 5: Create PlayerController Interface and Update Controllers
 
-**Current Implementation (`src/game/controllers/PolicyController.js`):**
-- `decide(observation, deltaTime)` takes optional deltaTime
-- Returns action mask `[boolean, boolean, boolean, boolean]`
-- Handles activation of policy agent
+**Current Implementation:**
+- `PlayerController` was a concrete class in `src/game/controllers/PlayerController.js`
+- Controllers extended `PlayerController` class
+- Mixed game-specific and library code
 
 **New Implementation:**
-```javascript
-// src/game/controllers/PolicyController.js
-export class PolicyController {
-  constructor(policyAgent) {
+
+1. **Create PlayerController Interface** (library code):
+```typescript
+// src/rl/controllers/PlayerController.ts
+export interface PlayerController {
+  decide(observation: number[]): Action;
+}
+```
+
+2. **Update PolicyController** (library code - already in `src/rl/controllers/PolicyController.ts`):
+```typescript
+// src/rl/controllers/PolicyController.ts
+import { PlayerController } from './PlayerController.js';
+
+export class PolicyController implements PlayerController {
+  constructor(policyAgent: PolicyAgent) {
     this.agent = policyAgent;
     this._activated = false;
   }
 
-  /**
-   * Decide on an action given a normalized observation vector
-   * @param {number[]} observation - Normalized observation vector
-   * @returns {Action} Action (number array)
-   */
-  decide(observation) {
+  decide(observation: number[]): Action {
     if (!this.agent || typeof this.agent.act !== 'function') {
-      // Fallback: return zero action
       return new Array(this.agent?.actionSize || 4).fill(0);
     }
     
@@ -1467,15 +1489,51 @@ export class PolicyController {
     }
     
     const result = this.agent.act(observation);
-    return result.action;  // Already a number array (Action)
+    return result.action;
+  }
+}
+```
+
+3. **Update HumanController** (game-specific code):
+```javascript
+// src/game/controllers/HumanController.js
+/**
+ * @implements {PlayerController} - Implements the PlayerController interface from src/rl/controllers/PlayerController.ts
+ */
+export class HumanController {
+  decide(observation) {
+    // Convert keyboard input to Action (number array)
+    return [
+      this.keyState.get(this.bindings.up) ? 1 : 0,
+      this.keyState.get(this.bindings.left) ? 1 : 0,
+      this.keyState.get(this.bindings.down) ? 1 : 0,
+      this.keyState.get(this.bindings.right) ? 1 : 0
+    ];
+  }
+}
+```
+
+4. **Update RandomController** (game-specific code):
+```javascript
+// src/game/controllers/RandomController.js
+/**
+ * @implements {PlayerController} - Implements the PlayerController interface from src/rl/controllers/PlayerController.ts
+ */
+export class RandomController {
+  decide(observation) {
+    // Sample random actions based on action spaces
+    // ... implementation ...
   }
 }
 ```
 
 **Key Changes:**
-- `decide(observation)` - remove `deltaTime` parameter (not in interface)
-- Return `Action` (number array) directly, not boolean mask
-- Simplify - no need to convert between formats
+- `PlayerController` is now an **interface** defined in `src/rl/controllers/PlayerController.ts` (library code)
+- `PolicyController` is in the library (`src/rl/controllers/PolicyController.ts`) and implements the interface
+- `HumanController` and `RandomController` are game-specific and implement the interface
+- `decide(observation)` - takes only `observation` parameter (no `deltaTime`)
+- Returns `Action` (number array) directly
+- Removed old `PlayerController.js` class from game folder
 
 ### Step 6: Organize RL Library Code Structure
 
@@ -1494,16 +1552,21 @@ src/rl/
 **New Structure (All RL Library Code in `src/rl/`):**
 ```
 src/rl/
+  - core/
+    - GameCore.ts (GameCore interface definition - library code)
+  - controllers/
+    - PlayerController.ts (PlayerController interface definition - library code)
+    - PolicyController.ts (PolicyController implementation - library code)
   - agents/
-    - PolicyAgent.js (game-agnostic, no game-specific deps)
+    - PolicyAgent.ts (game-agnostic, no game-specific deps)
     - NeuralNetwork.js (can be removed, use tf.LayersModel directly)
   - training/
-    - TrainingSession.js (uses GameCore interface)
-    - PPOTrainer.js (game-agnostic)
-    - RolloutCollector.js (uses GameCore interface)
+    - TrainingSession.ts (uses GameCore interface)
+    - PPOTrainer.ts (game-agnostic)
+    - RolloutCollector.ts (uses GameCore interface)
     - ExperienceBuffer.js
   - utils/
-    - NetworkUtils.js (NEW - serialization utilities from design)
+    - NetworkUtils.ts (serialization utilities)
     - ModelManager.js
     - CheckpointManager.js
     - Logger.js
@@ -1524,6 +1587,7 @@ src/rl/
 - `src/rl/entities/GameState.js` - Remove (use GameState from design interface)
 - `src/rl/entities/MovementDecision.js` - Remove (not needed in library)
 - `src/rl/agents/NeuralNetwork.js` - Can be removed (use tf.LayersModel directly in PolicyAgent)
+- `src/game/controllers/PlayerController.js` - Remove (interface moved to library)
 
 ### Step 7: Update PPOTrainer to Work with New PolicyAgent
 
@@ -1602,13 +1666,13 @@ export class PPOTrainer {
 **New:**
 ```javascript
 // src/main.js
-import { GameCore } from './game/GameCore.js';
+import { SaberGameCore } from './game/SaberGameCore.js';
 import { PolicyAgent } from './rl/agents/PolicyAgent.js';
-import { PolicyController } from './game/controllers/PolicyController.js';
+import { PolicyController } from './rl/controllers/PolicyController.js';
 import { TrainingSession } from './rl/training/TrainingSession.js';
 
-// Initialize GameCore (implements standardized interface)
-const gameCore = new GameCore();
+// Initialize SaberGameCore (implements GameCore interface)
+const gameCore = new SaberGameCore();
 
 // Create controllers array
 const controllers = [
@@ -1652,11 +1716,15 @@ await trainingSession.start();
 4. Start training - the library handles everything else
 
 **Library Structure:**
-- `src/rl/core/GameCore.js` - GameCore interface definition (library code)
+- `src/rl/core/GameCore.ts` - GameCore interface definition (library code)
+- `src/rl/controllers/PlayerController.ts` - PlayerController interface definition (library code)
+- `src/rl/controllers/PolicyController.ts` - PolicyController implementation (library code)
 - `src/rl/agents/` - PolicyAgent and other agents (library code)
 - `src/rl/training/` - TrainingSession, PPOTrainer, etc. (library code)
 - `src/rl/utils/` - NetworkUtils and other utilities (library code)
-- `src/game/SaberGameCore.js` - Saber game implementation of GameCore interface (game-specific code)
+- `src/game/SaberGameCore.ts` - Saber game implementation of GameCore interface (game-specific code)
+- `src/game/controllers/HumanController.js` - HumanController implementation of PlayerController interface (game-specific code)
+- `src/game/controllers/RandomController.js` - RandomController implementation of PlayerController interface (game-specific code)
 
 ## Benefits
 
@@ -1672,18 +1740,19 @@ await trainingSession.start();
 
 **The RL library's purpose is to produce good `PolicyController` instances that work with normalized number arrays.**
 
-### What is Game-Agnostic:
-- ✅ `PolicyController` - only sees `number[]` observations
-- ✅ `PolicyAgent` - only works with `number[]` and action spaces
+### What is Game-Agnostic (Library Code in `src/rl/`):
+- ✅ `PolicyController` (`src/rl/controllers/PolicyController.ts`) - only sees `number[]` observations
+- ✅ `PolicyAgent` (`src/rl/agents/PolicyAgent.ts`) - only works with `number[]` and action spaces
 - ✅ `Trainer` (PPOTrainer, etc.) - trains on `number[]` observations
+- ✅ `GameCore` interface (`src/rl/core/GameCore.ts`) - defines the contract for game implementations
 - ✅ `policyNetwork` and `valueNetwork` (tf.LayersModel) - take `number[]` as input, return arrays
 - ✅ All training logic, loss functions, optimizers
 
 ### What is Game-Specific:
-- ❌ `GameCore` - game logic, physics, and normalization to `number[]`
-  - `GameCore` is responsible for converting its internal state to normalized arrays
-  - This is the **ONLY** game-specific component
-  - Each game implements its own `GameCore` with normalization logic
+- ❌ `GameCore` implementations (e.g., `SaberGameCore`) - game logic, physics, and normalization to `number[]`
+  - `GameCore` implementations are responsible for converting their internal state to normalized arrays
+  - Each game implements its own `GameCore` class (e.g., `SaberGameCore`, `SoccerGameCore`) with normalization logic
+  - The `GameCore` interface itself is in the library (`src/rl/core/GameCore.ts`), but implementations are game-specific
 
 ### Result:
 A trained `PolicyController` can be:

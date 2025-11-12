@@ -9,12 +9,11 @@ import { SaberGameCore } from './game/SaberGameCore.js';
 import { GameLoop } from './game/GameLoop.js';
 import { Renderer } from './game/Renderer.js';
 import { HumanController } from './game/controllers/HumanController.js';
-import { PolicyController } from './game/controllers/PolicyController.js';
+import { PolicyController } from './rl/controllers/PolicyController.js';
 import { PolicyAgent } from './rl/agents/PolicyAgent.js';
 import { TrainingSession } from './rl/training/TrainingSession.js';
 import { TrainingUI } from './rl/visualization/TrainingUI.js';
 import { OpponentPolicyManager } from './rl/utils/OpponentPolicyManager.js';
-import { PolicyOpponentController } from './game/controllers/PolicyOpponentController.js';
 import { RandomController } from './game/controllers/RandomController.js';
 
 /**
@@ -122,7 +121,7 @@ class SabeRLArena {
       this.initializeTraining();
 
       // Initialize opponent manager
-      this.opponentManager = new OpponentPolicyManager();
+      this.opponentManager = new OpponentPolicyManager(this.core);
 
       // Initialize scoreboard
       this.updateScoreboard();
@@ -349,7 +348,7 @@ class SabeRLArena {
       
       // Store opponent controller for use in GameLoop
       if (selection.type === 'policy' && selection.agent) {
-        this.opponentController = new PolicyOpponentController(selection.agent);
+        this.opponentController = new PolicyController(selection.agent);
         console.log(`Opponent set to policy: ${selection.label}`);
       } else {
         // Use RandomController as default (GameLoop already has it set)

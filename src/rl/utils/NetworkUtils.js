@@ -1,36 +1,25 @@
 /**
  * NetworkUtils - Utility functions for network serialization/deserialization
  * Game-agnostic utilities for saving and loading TensorFlow.js models
+ * JavaScript version (TypeScript version also exists)
  */
 
 // TensorFlow.js is loaded from CDN as a global 'tf' object
-declare const tf: any;
-
-export interface NetworkArchitecture {
-  inputSize: number;
-  hiddenLayers: number[];
-  outputSize: number;
-  activation: string;
-}
-
-export interface SerializedWeight {
-  data: number[];
-  shape: number[];
-  dtype: string;
-}
-
-export interface SerializedNetworkData {
-  architecture: NetworkArchitecture;
-  weights: SerializedWeight[];
-}
 
 export class NetworkUtils {
   /**
    * Load a tf.LayersModel from serialized weights
-   * @param {SerializedNetworkData} serializedData - Serialized network data
-   * @returns {any} Loaded model with weights restored (tf.LayersModel)
+   * @param {Object} serializedData - Serialized network data
+   * @param {Object} serializedData.architecture - Network architecture config
+   *   - inputSize: number - Input layer size
+   *   - hiddenLayers: number[] - Hidden layer sizes
+   *   - outputSize: number - Output layer size
+   *   - activation: string - Activation function for hidden layers
+   * @param {Array} serializedData.weights - Serialized weights array
+   *   Each element: { data: number[], shape: number[], dtype: string }
+   * @returns {tf.LayersModel} Loaded model with weights restored
    */
-  static loadNetworkFromSerialized(serializedData: SerializedNetworkData): any {
+  static loadNetworkFromSerialized(serializedData) {
     const { architecture, weights } = serializedData;
     
     // Create model with same architecture
@@ -63,7 +52,7 @@ export class NetworkUtils {
     // Load weights if provided
     if (weights && weights.length > 0) {
       // Convert serialized weights back to tensors
-      const weightTensors = weights.map((w: SerializedWeight) => 
+      const weightTensors = weights.map(w => 
         tf.tensor(w.data, w.shape, w.dtype)
       );
       model.setWeights(weightTensors);
@@ -74,13 +63,13 @@ export class NetworkUtils {
   
   /**
    * Serialize a tf.LayersModel to a storable format
-   * @param {any} model - Model to serialize (tf.LayersModel)
-   * @param {NetworkArchitecture} architecture - Architecture config
-   * @returns {SerializedNetworkData} Serialized model data
+   * @param {tf.LayersModel} model - Model to serialize
+   * @param {Object} architecture - Architecture config (inputSize, hiddenLayers, outputSize, activation)
+   * @returns {Object} Serialized model data
    */
-  static serializeNetwork(model: any, architecture: NetworkArchitecture): SerializedNetworkData {
+  static serializeNetwork(model, architecture) {
     const weights = model.getWeights();
-    const serializedWeights: SerializedWeight[] = weights.map((w: any) => ({
+    const serializedWeights = weights.map(w => ({
       data: Array.from(w.dataSync()),
       shape: w.shape,
       dtype: w.dtype

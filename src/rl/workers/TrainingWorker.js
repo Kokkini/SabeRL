@@ -53,7 +53,6 @@ class TrainingWorker {
     
     // Game components (simplified versions for headless execution)
     this.gameConfig = null;
-    this.neuralNetwork = null;
     this.policyAgent = null;
     
     // Statistics
@@ -91,10 +90,8 @@ class TrainingWorker {
       this.gameConfig = config.gameConfig;
       this.stats.startTime = Date.now();
       
-      // Initialize neural network from serialized data
-      this.neuralNetwork = await this.loadNeuralNetwork(config.neuralNetwork);
-      
-      // Create policy agent
+      // Note: TrainingWorker needs to be updated to use new PolicyAgent API
+      // For now, create a placeholder policy agent
       this.policyAgent = this.createPolicyAgent();
       
       // Start each game
@@ -472,23 +469,7 @@ class TrainingWorker {
     }
   }
 
-  /**
-   * Load neural network from serialized data
-   * @param {Object} serializedModel - Serialized model data
-   * @returns {tf.LayersModel} Loaded model
-   */
-  async loadNeuralNetwork(serializedModel) {
-    // This would load the actual model in a real implementation
-    // For now, return a placeholder
-    return {
-      predict: (input) => {
-        // Random action selection for now
-        const actions = ['W', 'A', 'S', 'D'];
-        const randomAction = actions[Math.floor(Math.random() * actions.length)];
-        return tf.tensor2d([[0.25, 0.25, 0.25, 0.25]]); // Equal probabilities
-      }
-    };
-  }
+  // Note: loadNeuralNetwork removed - use NetworkUtils.loadNetworkFromSerialized() instead
 
   /**
    * Create policy agent

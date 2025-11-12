@@ -15,8 +15,9 @@ The core RL library and game implementation have been successfully migrated to T
 
 ### Game Implementation (`src/game/`)
 - ✅ `src/game/SaberGameCore.ts` - Game implementation implementing `GameCore`
-- ✅ `src/game/controllers/PolicyController.ts` - Controller implementation
-- ✅ `src/game/controllers/PolicyOpponentController.ts` - Opponent controller
+
+### RL Library Controllers (`src/rl/controllers/`)
+- ✅ `src/rl/controllers/PolicyController.ts` - Policy controller (used for both main player and opponent)
 
 ## Configuration
 

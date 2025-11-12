@@ -1,8 +1,12 @@
-import { PlayerController } from './PlayerController.js';
-
-export class HumanController extends PlayerController {
+/**
+ * HumanController - Controller for human player input via keyboard
+ * Implements PlayerController interface from RL library
+ * 
+ * @implements {PlayerController} - Implements the PlayerController interface from src/rl/controllers/PlayerController.ts
+ */
+export class HumanController {
   constructor(id = 'human', bindings = { up: 'KeyW', left: 'KeyA', down: 'KeyS', right: 'KeyD' }) {
-    super(id);
+    this.id = id;
     this.bindings = bindings;
     this.keyState = new Map();
 

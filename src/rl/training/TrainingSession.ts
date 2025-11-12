@@ -11,12 +11,8 @@ import { ModelManager } from '../utils/ModelManager.js';
 import { PPOTrainer } from './PPOTrainer.js';
 import { RolloutCollector, Experience } from './RolloutCollector.js';
 import { OpponentPolicyManager } from '../utils/OpponentPolicyManager.js';
-import { PolicyOpponentController } from '../../game/controllers/PolicyOpponentController.js';
-import { PolicyController } from '../../game/controllers/PolicyController.js';
-
-export interface PlayerController {
-  decide(observation: number[]): number[];
-}
+import { PolicyController } from '../controllers/PolicyController.js';
+import { PlayerController } from '../controllers/PlayerController.js';
 
 export interface TrainingSessionOptions {
   trainablePlayers?: number[];
@@ -267,7 +263,7 @@ export class TrainingSession {
             try { this.opponentManager.load(); } catch (_) {}
             const sel = this.opponentManager.sample();
             if (sel.type === 'policy' && sel.agent) {
-              return new PolicyOpponentController(sel.agent);
+              return new PolicyController(sel.agent);
             }
             return null; // null => random AI
           },

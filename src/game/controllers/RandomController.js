@@ -1,6 +1,8 @@
 /**
  * RandomController - Controller that samples random actions
  * Game-agnostic controller that implements PlayerController interface
+ * 
+ * @implements {PlayerController} - Implements the PlayerController interface from src/rl/controllers/PlayerController.ts
  */
 export class RandomController {
   constructor(actionSpaces = null) {

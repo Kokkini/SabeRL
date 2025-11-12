@@ -7,7 +7,6 @@
 import { Saber } from './Saber.js';
 import { GameConfig } from '../../config/config.js';
 import { PolicyAgent } from '../../rl/agents/PolicyAgent.js';
-import { GameState } from '../../rl/entities/GameState.js';
 import { Vector2 } from '../../utils/Vector2.js';
 
 export class Player {

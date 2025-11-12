@@ -1,5 +1,5 @@
-import { NeuralNetwork } from '../agents/NeuralNetwork.js';
 import { PolicyAgent } from '../agents/PolicyAgent.js';
+import { NetworkUtils } from './NetworkUtils.js';
 
 /**
  * OpponentPolicyManager maintains a weighted list of opponent options.
@@ -7,7 +7,8 @@ import { PolicyAgent } from '../agents/PolicyAgent.js';
  * It persists configuration and caches constructed agents.
  */
 export class OpponentPolicyManager {
-  constructor(storageKey = 'saber_rl_opponent_config') {
+  constructor(gameCore = null, storageKey = 'saber_rl_opponent_config') {
+    this.gameCore = gameCore; // GameCore interface - needed to get observation/action sizes
     this.storageKey = storageKey;
     this.options = [];
     this.agentCache = new Map(); // id -> PolicyAgent
@@ -15,6 +16,16 @@ export class OpponentPolicyManager {
     if (this.options.length === 0) {
       this.resetToDefault();
     }
+  }
+
+  /**
+   * Set the GameCore (needed for creating PolicyAgents)
+   * @param {GameCore} gameCore - GameCore interface
+   */
+  setGameCore(gameCore) {
+    this.gameCore = gameCore;
+    // Clear cache when GameCore changes (agents need correct observation/action sizes)
+    this.dispose();
   }
 
   resetToDefault() {
@@ -49,7 +60,14 @@ export class OpponentPolicyManager {
   }
 
   /**
-   * Add a policy option from a serialized bundle produced by TrainingSession.exportAgentWeights.
+   * Add a policy option from a serialized bundle.
+   * Bundle should contain:
+   * - policy: SerializedNetworkData for policy network
+   * - value: SerializedNetworkData for value network (optional, will create default if missing)
+   * - learnableStd: number[] for learnable standard deviations (optional, will use default if missing)
+   * - observationSize: number (optional, will use GameCore if available)
+   * - actionSize: number (optional, will use GameCore if available)
+   * - actionSpaces: ActionSpace[] (optional, will use GameCore if available)
    */
   addPolicy(label, bundle) {
     if (!bundle || !bundle.policy) {
@@ -61,8 +79,13 @@ export class OpponentPolicyManager {
       label: label || `Policy ${this.options.length}`,
       type: 'policy',
       weight: 1,
-      // Store the serialized policy network for later reconstruction
-      policyData: bundle.policy
+      // Store the full bundle for later reconstruction
+      policyData: bundle.policy,
+      valueData: bundle.value, // Optional
+      learnableStd: bundle.learnableStd, // Optional
+      observationSize: bundle.observationSize, // Optional
+      actionSize: bundle.actionSize, // Optional
+      actionSpaces: bundle.actionSpaces // Optional
     };
     this.options.push(option);
     this.persist();
@@ -98,11 +121,54 @@ export class OpponentPolicyManager {
   #getOrCreateAgent(option) {
     try {
       if (this.agentCache.has(option.id)) return this.agentCache.get(option.id);
-      const nn = NeuralNetwork.fromSerialized(option.policyData);
-      const agent = new PolicyAgent({ neuralNetwork: nn });
+      
+      // Get observation/action info from bundle or GameCore
+      const observationSize = option.observationSize || (this.gameCore?.getObservationSize?.() || 9);
+      const actionSize = option.actionSize || (this.gameCore?.getActionSize?.() || 4);
+      const actionSpaces = option.actionSpaces || (this.gameCore?.getActionSpaces?.() || 
+        new Array(actionSize).fill(null).map(() => ({ type: 'discrete' })));
+      
+      // Load policy network from serialized data
+      // Handle both old format (NeuralNetwork.serialize) and new format (NetworkUtils.serializeNetwork)
+      let policyNetwork;
+      if (option.policyData.architecture && option.policyData.weights) {
+        // New format: NetworkUtils serialized format
+        policyNetwork = NetworkUtils.loadNetworkFromSerialized(option.policyData);
+      } else if (option.policyData.architecture) {
+        // Old format: NeuralNetwork.serialize format (has architecture, weights, id, etc.)
+        policyNetwork = NetworkUtils.loadNetworkFromSerialized({
+          architecture: {
+            inputSize: option.policyData.architecture.inputSize || observationSize,
+            hiddenLayers: option.policyData.architecture.hiddenLayers || [64, 32],
+            outputSize: option.policyData.architecture.outputSize || actionSize,
+            activation: option.policyData.architecture.activation || 'relu'
+          },
+          weights: option.policyData.weights || []
+        });
+      } else {
+        throw new Error('Invalid policy data format');
+      }
+      
+      // Load value network if available, otherwise create default
+      let valueNetwork = null;
+      if (option.valueData && option.valueData.architecture && option.valueData.weights) {
+        valueNetwork = NetworkUtils.loadNetworkFromSerialized(option.valueData);
+      }
+      
+      // Create PolicyAgent with loaded networks
+      const agent = new PolicyAgent({
+        observationSize: observationSize,
+        actionSize: actionSize,
+        actionSpaces: actionSpaces,
+        policyNetwork: policyNetwork,
+        valueNetwork: valueNetwork, // Will create default if null
+        initialStd: option.learnableStd || 0.1
+      });
+      
       this.agentCache.set(option.id, agent);
       return agent;
     } catch (e) {
+      console.error('Failed to create agent from policy data:', e);
       return null;
     }
   }
@@ -114,7 +180,13 @@ export class OpponentPolicyManager {
         label: o.label,
         type: o.type,
         weight: o.weight,
-        policyData: o.type === 'policy' ? o.policyData : undefined
+        // Store all policy-related data for reconstruction
+        policyData: o.type === 'policy' ? o.policyData : undefined,
+        valueData: o.type === 'policy' ? o.valueData : undefined,
+        learnableStd: o.type === 'policy' ? o.learnableStd : undefined,
+        observationSize: o.type === 'policy' ? o.observationSize : undefined,
+        actionSize: o.type === 'policy' ? o.actionSize : undefined,
+        actionSpaces: o.type === 'policy' ? o.actionSpaces : undefined
       }));
       localStorage.setItem(this.storageKey, JSON.stringify({ options: shallow, savedAt: Date.now() }));
     } catch (e) {
