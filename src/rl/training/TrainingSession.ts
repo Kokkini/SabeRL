@@ -13,6 +13,7 @@ import { RolloutCollector, Experience } from './RolloutCollector.js';
 import { OpponentPolicyManager } from '../utils/OpponentPolicyManager.js';
 import { PolicyController } from '../controllers/PolicyController.js';
 import { PlayerController } from '../controllers/PlayerController.js';
+import { NetworkUtils } from '../utils/NetworkUtils.js';
 
 export interface TrainingSessionOptions {
   trainablePlayers?: number[];
@@ -775,6 +776,137 @@ export class TrainingSession {
       trainingTime: Date.now() - this.trainingStartTime,
       metrics: this.trainingMetrics
     };
+  }
+
+  /**
+   * Export agent weights for saving
+   * @returns {Object} Serialized agent weights bundle
+   */
+  exportAgentWeights(): any {
+    if (!this.policyAgent) {
+      throw new Error('No policy agent available to export');
+    }
+
+    const agent = this.policyAgent;
+    
+    // Serialize policy network
+    const policyNetworkData = NetworkUtils.serializeNetwork(
+      agent.policyNetwork,
+      {
+        inputSize: agent.observationSize,
+        hiddenLayers: agent.networkArchitecture.policyHiddenLayers,
+        outputSize: agent.actionSize,
+        activation: agent.networkArchitecture.activation
+      }
+    );
+
+    // Serialize value network
+    const valueNetworkData = NetworkUtils.serializeNetwork(
+      agent.valueNetwork,
+      {
+        inputSize: agent.observationSize,
+        hiddenLayers: agent.networkArchitecture.valueHiddenLayers,
+        outputSize: 1,
+        activation: agent.networkArchitecture.activation
+      }
+    );
+
+    // Serialize learnableStd
+    const learnableStdArray = Array.from(agent.learnableStd.dataSync());
+    const learnableStdShape = agent.learnableStd.shape;
+
+    return {
+      version: '1.0.0',
+      observationSize: agent.observationSize,
+      actionSize: agent.actionSize,
+      actionSpaces: agent.actionSpaces,
+      networkArchitecture: agent.networkArchitecture,
+      policyNetwork: policyNetworkData,
+      valueNetwork: valueNetworkData,
+      learnableStd: {
+        data: learnableStdArray,
+        shape: learnableStdShape,
+        dtype: agent.learnableStd.dtype
+      },
+      metadata: {
+        gamesCompleted: this.gamesCompleted,
+        trainingTime: Date.now() - this.trainingStartTime,
+        timestamp: Date.now()
+      }
+    };
+  }
+
+  /**
+   * Import agent weights from a saved bundle
+   * @param {Object} bundle - Serialized agent weights bundle
+   */
+  async importAgentWeights(bundle: any): Promise<void> {
+    if (!bundle || !bundle.policyNetwork || !bundle.valueNetwork) {
+      throw new Error('Invalid agent weights bundle');
+    }
+
+    // Load policy network
+    const policyNetwork = NetworkUtils.loadNetworkFromSerialized(bundle.policyNetwork);
+    
+    // Load value network
+    const valueNetwork = NetworkUtils.loadNetworkFromSerialized(bundle.valueNetwork);
+
+    // Load learnableStd
+    // Access tf from global scope (TensorFlow.js loaded from CDN)
+    const tf = (window as any).tf;
+    if (!tf) {
+      throw new Error('TensorFlow.js not loaded');
+    }
+    
+    const learnableStdTensor = tf.tensor(
+      bundle.learnableStd.data,
+      bundle.learnableStd.shape,
+      bundle.learnableStd.dtype
+    );
+    const learnableStd = tf.variable(learnableStdTensor, true);
+
+    // Create new PolicyAgent with loaded weights
+    const newAgent = new PolicyAgent({
+      observationSize: bundle.observationSize,
+      actionSize: bundle.actionSize,
+      actionSpaces: bundle.actionSpaces,
+      policyNetwork: policyNetwork,
+      valueNetwork: valueNetwork,
+      networkArchitecture: bundle.networkArchitecture,
+      initialStd: bundle.learnableStd.data // Will be overridden below
+    });
+
+    // Replace learnableStd (dispose old one first)
+    if (newAgent.learnableStd) {
+      newAgent.learnableStd.dispose();
+    }
+    (newAgent as any).learnableStd = learnableStd;
+
+    // Dispose old agent
+    if (this.policyAgent) {
+      this.policyAgent.dispose();
+    }
+
+    // Update policy agent
+    this.policyAgent = newAgent;
+    
+    // Update policyAgents array
+    if (this.trainablePlayers.length > 0) {
+      const firstTrainablePlayer = this.trainablePlayers[0];
+      this.policyAgents[firstTrainablePlayer] = newAgent;
+      
+      // Update controller
+      if (this.controllers[firstTrainablePlayer]) {
+        this.controllers[firstTrainablePlayer] = new PolicyController(newAgent);
+      }
+    }
+
+    // Update rollout collectors with new agent
+    for (const collector of this.rolloutCollectors) {
+      (collector as any).agent = newAgent;
+    }
+
+    console.log('Agent weights imported successfully');
   }
 
   /**
