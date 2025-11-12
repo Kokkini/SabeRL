@@ -6,6 +6,7 @@
 import { GameConfig } from '../config/config.js';
 import { Renderer } from './Renderer.js';
 import { HumanController } from './controllers/HumanController.js';
+import { RandomController } from './controllers/RandomController.js';
 
 export class GameLoop {
   /**
@@ -14,12 +15,20 @@ export class GameLoop {
    */
   constructor(core, controller, renderer = null) {
     this.core = core;
-    this.controller = controller;
+    this.controller = controller;  // Controller for player 0
+    // Default to RandomController for player 1 if not provided
+    // Initialize with actionSpaces if available, otherwise will get them on first use
+    const actionSpaces = (core && typeof core.getActionSpaces === 'function') 
+      ? core.getActionSpaces() 
+      : null;
+    this.opponentController = new RandomController(actionSpaces);
     this.renderer = renderer instanceof Renderer ? renderer : null;
-    this.lastObservation = null;
+    this.lastState = null;  // Store full GameState
     this.playerActionInterval = (GameConfig?.rl?.rollout?.actionIntervalSeconds ?? 0.2);
     this.playerDecisionTimer = this.playerActionInterval; // allow immediate first decision
-    this._lastPlayerMask = [false, false, false, false];
+    this.opponentDecisionTimer = this.playerActionInterval; // allow immediate first decision
+    this._lastAction = null;  // Store last action (number array)
+    this._lastOpponentAction = null;  // Will be set on first decision
     this._isRunning = false;
     this.lastTime = 0;
     this.accumulator = 0;
@@ -62,7 +71,15 @@ export class GameLoop {
   }
 
   setInitialObservation(observation) {
-    this.lastObservation = observation || null;
+    // Legacy method - now we use lastState
+    if (observation) {
+      this.lastState = {
+        observations: [observation, observation], // Assume same for both players
+        rewards: [0, 0],
+        done: false,
+        outcome: null
+      };
+    }
     // ensure first frame decides immediately after reset
     this.playerDecisionTimer = this.playerActionInterval;
   }
@@ -145,27 +162,83 @@ export class GameLoop {
   update(deltaTime) {
     // Decide action, step core
     if (this.core && this.controller) {
+      // Initialize state if needed
+      if (!this.lastState) {
+        this.lastState = this.core.reset();
+      }
+      
       // Throttle player decisions by actionIntervalSeconds (only for non-human controllers)
       const isHuman = this.controller instanceof HumanController;
-      let mask;
+      let action;
       if (isHuman) {
         // Human controller: no throttling, get fresh decision every frame
-        mask = this.controller.decide(this.lastObservation, deltaTime) || this._lastPlayerMask;
-        this._lastPlayerMask = mask;
+        const normalizedObs = this.lastState.observations[0];
+        action = this.controller.decide(normalizedObs) || this._lastAction || new Array(this.core.getActionSize()).fill(0);
+        this._lastAction = action;
       } else {
         // Policy controller: throttle decisions
         this.playerDecisionTimer += deltaTime;
         if (this.playerDecisionTimer >= this.playerActionInterval) {
-          this._lastPlayerMask = this.controller.decide(this.lastObservation, deltaTime) || this._lastPlayerMask;
+          const normalizedObs = this.lastState.observations[0];
+          this._lastAction = this.controller.decide(normalizedObs) || this._lastAction || new Array(this.core.getActionSize()).fill(0);
           this.playerDecisionTimer = 0;
         }
-        mask = this._lastPlayerMask;
+        action = this._lastAction;
       }
-      const result = this.core.step(mask, deltaTime);
-      this.lastObservation = result ? result.observation : this.lastObservation;
+      
+      // Create actions array for all players
+      // Player 1 uses opponent controller (defaults to RandomController)
+      let opponentAction = new Array(this.core.getActionSize()).fill(0);
+      if (this.opponentController && this.lastState && this.lastState.observations && this.lastState.observations[1]) {
+        // Throttle opponent decisions
+        this.opponentDecisionTimer += deltaTime;
+        if (this.opponentDecisionTimer >= this.playerActionInterval || !this._lastOpponentAction) {
+          // Make a new decision if timer elapsed or if this is the first decision
+          const opponentObs = this.lastState.observations[1];
+          const newAction = this.opponentController.decide(opponentObs);
+          if (newAction && Array.isArray(newAction) && newAction.length === this.core.getActionSize()) {
+            this._lastOpponentAction = newAction;
+            opponentAction = newAction;
+          } else {
+            // Fallback: generate random action if controller didn't return valid action
+            console.warn('Opponent controller returned invalid action, using random fallback');
+            for (let i = 0; i < this.core.getActionSize(); i++) {
+              opponentAction[i] = Math.random() < 0.5 ? 1 : 0;
+            }
+            this._lastOpponentAction = opponentAction;
+          }
+          this.opponentDecisionTimer = 0;
+        } else {
+          // Use last action
+          if (this._lastOpponentAction && Array.isArray(this._lastOpponentAction) && this._lastOpponentAction.length === this.core.getActionSize()) {
+            opponentAction = this._lastOpponentAction;
+          }
+        }
+      } else if (this.opponentController) {
+        // If lastState not ready yet, still try to get an action (fallback to random)
+        const fallbackAction = this.opponentController.decide(new Array(this.core.getObservationSize()).fill(0));
+        if (fallbackAction && Array.isArray(fallbackAction) && fallbackAction.length === this.core.getActionSize()) {
+          opponentAction = fallbackAction;
+          this._lastOpponentAction = fallbackAction;
+        }
+      }
+      
+      const actions = [
+        action,  // Player 0 action
+        opponentAction  // Player 1 action
+      ];
+      
+      const result = this.core.step(actions, deltaTime);
+      this.lastState = result || this.lastState;
+      
       if (result && result.done) {
         if (this.onGameEnd) {
-          this.onGameEnd(result.outcome);
+          // Convert outcome array to legacy format for compatibility
+          const legacyOutcome = result.outcome ? {
+            isTie: result.outcome[0] === 'tie',
+            winnerId: result.outcome[0] === 'win' ? 'player-1' : (result.outcome[0] === 'loss' ? 'ai-1' : null)
+          } : null;
+          this.onGameEnd(legacyOutcome);
         }
         this.stop();
         return;

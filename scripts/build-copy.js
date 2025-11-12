@@ -30,6 +30,10 @@ function copyDir(src, dest) {
       // Recursively copy subdirectory
       copyDir(srcPath, destPath);
     } else {
+      // Skip TypeScript files - they should be compiled to .js first
+      if (entry.name.endsWith('.ts') || entry.name.endsWith('.tsx')) {
+        continue;
+      }
       // Copy file
       fs.copyFileSync(srcPath, destPath);
     }

@@ -5,17 +5,17 @@
 
 // TensorFlow.js is loaded from CDN as a global 'tf' object
 import { GameConfig, validateConfig } from './config/config.js';
-import { GameCore } from './game/GameCore.js';
+import { SaberGameCore } from './game/SaberGameCore.js';
 import { GameLoop } from './game/GameLoop.js';
 import { Renderer } from './game/Renderer.js';
 import { HumanController } from './game/controllers/HumanController.js';
 import { PolicyController } from './game/controllers/PolicyController.js';
 import { PolicyAgent } from './rl/agents/PolicyAgent.js';
-import { NeuralNetwork } from './rl/agents/NeuralNetwork.js';
 import { TrainingSession } from './rl/training/TrainingSession.js';
 import { TrainingUI } from './rl/visualization/TrainingUI.js';
 import { OpponentPolicyManager } from './rl/utils/OpponentPolicyManager.js';
 import { PolicyOpponentController } from './game/controllers/PolicyOpponentController.js';
+import { RandomController } from './game/controllers/RandomController.js';
 
 /**
  * Main game class that manages the entire application
@@ -45,6 +45,7 @@ class SabeRLArena {
 
     // Opponent configuration
     this.opponentManager = null;
+    this.opponentController = null;  // Opponent controller for GameLoop
   }
 
   /**
@@ -88,7 +89,7 @@ class SabeRLArena {
       this.setupCanvas();
 
       // Initialize core, renderer, controller, and game loop
-      this.core = new GameCore();
+      this.core = new SaberGameCore();
       const renderer = new Renderer(this.canvas);
       this.controller = new HumanController();
       this.gameLoop = new GameLoop(this.core, this.controller, renderer);
@@ -302,11 +303,19 @@ class SabeRLArena {
       }
 
       // Reset core state and start loop
-      const initialObservation = this.core.reset();
+      const initialState = this.core.reset();
       // Sample and set opponent controller for this game
       this.applyOpponentSelection();
-      if (this.gameLoop && typeof this.gameLoop.setInitialObservation === 'function') {
-        this.gameLoop.setInitialObservation(initialObservation);
+      // Set opponent controller in game loop (always set, even if it's RandomController)
+      if (this.gameLoop && this.opponentController) {
+        this.gameLoop.opponentController = this.opponentController;
+        // Reset opponent decision timer to allow immediate first decision
+        this.gameLoop.opponentDecisionTimer = this.gameLoop.playerActionInterval;
+        this.gameLoop._lastOpponentAction = null;
+        if (typeof this.gameLoop.setInitialObservation === 'function') {
+          // Legacy method - pass first observation for backward compatibility
+          this.gameLoop.setInitialObservation(initialState.observations[0]);
+        }
       }
       this.gameLoop.start();
     } catch (error) {
@@ -326,28 +335,31 @@ class SabeRLArena {
   }
 
   /**
-   * Sample opponent option and apply controller to core
+   * Sample opponent option and apply controller to game loop
+   * Note: In new design, opponent is handled through controllers array in GameLoop
    */
   applyOpponentSelection() {
     try {
-      if (!this.core) return;
+      if (!this.core || !this.gameLoop) return;
       if (this.opponentManager && typeof this.opponentManager.load === 'function') {
         // Refresh options from storage in case UI changed them
         this.opponentManager.load();
       }
       const selection = this.opponentManager ? this.opponentManager.sample() : { type: 'random' };
+      
+      // Store opponent controller for use in GameLoop
       if (selection.type === 'policy' && selection.agent) {
-        const controller = new PolicyOpponentController(selection.agent);
-        this.core.setOpponentController(controller);
+        this.opponentController = new PolicyOpponentController(selection.agent);
         console.log(`Opponent set to policy: ${selection.label}`);
       } else {
-        // Use built-in random AI
-        this.core.setOpponentController(null);
+        // Use RandomController as default (GameLoop already has it set)
+        this.opponentController = new RandomController(this.core.getActionSpaces());
         console.log('Opponent set to random');
       }
     } catch (e) {
       console.warn('Failed to apply opponent selection, falling back to random', e);
-      try { this.core.setOpponentController(null); } catch(_) {}
+      // Fallback to RandomController on error
+      this.opponentController = new RandomController(this.core?.getActionSpaces?.() || null);
     }
   }
 
@@ -503,19 +515,23 @@ class SabeRLArena {
       // Get control status element
       this.controlStatusElement = document.getElementById('control-status');
       
-      // Create neural network and policy agent
-      const neuralNetwork = new NeuralNetwork({
-        architecture: {
-          inputSize: 9, // Updated to match GameStateProcessor output (4 pos + 2 angles + 2 velocity + 1 distance)
-          hiddenLayers: GameConfig.rl.hiddenLayers,
-          outputSize: 4,
-          activation: 'relu'
-        }
-      });
-      
-      this.policyAgent = new PolicyAgent({
-        neuralNetwork: neuralNetwork
-      });
+      // Create policy agent (game-agnostic, uses GameCore interface)
+      if (this.core) {
+        const observationSize = this.core.getObservationSize();
+        const actionSize = this.core.getActionSize();
+        const actionSpaces = this.core.getActionSpaces();
+        
+        this.policyAgent = new PolicyAgent({
+          observationSize: observationSize,
+          actionSize: actionSize,
+          actionSpaces: actionSpaces,
+          networkArchitecture: {
+            policyHiddenLayers: GameConfig.rl.hiddenLayers || [64, 32],
+            valueHiddenLayers: GameConfig.rl.hiddenLayers || [64, 32],
+            activation: 'relu'
+          }
+        });
+      }
       
       // Initialize AI control UI state
       this.updateControlStatus('Human Control', false);
@@ -535,10 +551,26 @@ class SabeRLArena {
       // Wait for Chart.js to load before initializing TrainingUI
       await this.waitForChartJS();
 
-      // Create training session
-      this.trainingSession = new TrainingSession(null, {
+      // Create controllers array (for training)
+      const controllers = [
+        new HumanController(),  // Player 0
+        new RandomController(this.core.getActionSpaces())  // Player 1 (default to random)
+      ];
+      
+      // Create training session with GameCore and controllers
+      this.trainingSession = new TrainingSession(this.core, controllers, {
+        trainablePlayers: [0],  // Train player 0
         maxGames: GameConfig.rl.maxGames,
-        autoSaveInterval: GameConfig.rl.autoSaveInterval
+        autoSaveInterval: GameConfig.rl.autoSaveInterval,
+        algorithm: {
+          type: 'PPO',
+          hyperparameters: {}
+        },
+        networkArchitecture: {
+          policyHiddenLayers: GameConfig.rl.hiddenLayers || [64, 32],
+          valueHiddenLayers: GameConfig.rl.hiddenLayers || [64, 32],
+          activation: 'relu'
+        }
       });
 
       // Initialize training session

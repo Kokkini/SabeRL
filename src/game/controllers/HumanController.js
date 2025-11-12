@@ -17,15 +17,21 @@ export class HumanController extends PlayerController {
     }
   }
 
-  decide(observation, deltaTime) {
-    const mask = [
-      !!this.keyState.get(this.bindings.up),
-      !!this.keyState.get(this.bindings.left),
-      !!this.keyState.get(this.bindings.down),
-      !!this.keyState.get(this.bindings.right)
+  /**
+   * Decide on an action given a normalized observation vector
+   * @param {number[]} observation - Normalized observation vector
+   * @returns {Action} Action (number array)
+   */
+  decide(observation) {
+    // Convert boolean mask to number array (Action type)
+    const action = [
+      this.keyState.get(this.bindings.up) ? 1 : 0,
+      this.keyState.get(this.bindings.left) ? 1 : 0,
+      this.keyState.get(this.bindings.down) ? 1 : 0,
+      this.keyState.get(this.bindings.right) ? 1 : 0
     ];
-    this.lastActionMask = mask;
-    return mask;
+    this.lastActionMask = action; // Keep for backward compatibility
+    return action;
   }
 }
 
