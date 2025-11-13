@@ -5,7 +5,7 @@
  * deciding actions based on normalized observations. It is part of the RL library
  * and works with any game that implements the GameCore interface.
  * 
- * Location: src/rl/controllers/PolicyController.ts (library code)
+ * Location: src/MimicRL/controllers/PolicyController.ts (library code)
  * 
  * @implements {PlayerController} - Implements the PlayerController interface
  */

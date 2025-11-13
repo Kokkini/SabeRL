@@ -5,7 +5,7 @@ import { AI } from './entities/AI.js';
 import { MovementSystem } from './systems/MovementSystem.js';
 import { CollisionSystem } from './systems/CollisionSystem.js';
 import { Vector2 } from '../utils/Vector2.js';
-import { GameCore, GameState, Action, ActionSpace } from '../rl/core/GameCore.js';
+import { GameCore, GameState, Action, ActionSpace } from '../MimicRL/core/GameCore.js';
 
 /**
  * SaberGameCore - Game-specific implementation of the GameCore interface

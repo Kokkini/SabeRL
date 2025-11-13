@@ -5,19 +5,19 @@ The core RL library and game implementation have been successfully migrated to T
 
 ## Files Converted to TypeScript
 
-### Core Library (`src/rl/`)
-- ✅ `src/rl/core/GameCore.ts` - Interface definitions with proper TypeScript types
-- ✅ `src/rl/agents/PolicyAgent.ts` - Policy agent with typed interfaces
-- ✅ `src/rl/utils/NetworkUtils.ts` - Network utilities
-- ✅ `src/rl/training/RolloutCollector.ts` - Rollout collection with types
-- ✅ `src/rl/training/TrainingSession.ts` - Training session management
-- ✅ `src/rl/training/PPOTrainer.ts` - PPO trainer implementation
+### Core Library (`src/MimicRL/`)
+- ✅ `src/MimicRL/core/GameCore.ts` - Interface definitions with proper TypeScript types
+- ✅ `src/MimicRL/agents/PolicyAgent.ts` - Policy agent with typed interfaces
+- ✅ `src/MimicRL/utils/NetworkUtils.ts` - Network utilities
+- ✅ `src/MimicRL/training/RolloutCollector.ts` - Rollout collection with types
+- ✅ `src/MimicRL/training/TrainingSession.ts` - Training session management
+- ✅ `src/MimicRL/training/PPOTrainer.ts` - PPO trainer implementation
 
 ### Game Implementation (`src/game/`)
 - ✅ `src/game/SaberGameCore.ts` - Game implementation implementing `GameCore`
 
-### RL Library Controllers (`src/rl/controllers/`)
-- ✅ `src/rl/controllers/PolicyController.ts` - Policy controller (used for both main player and opponent)
+### RL Library Controllers (`src/MimicRL/controllers/`)
+- ✅ `src/MimicRL/controllers/PolicyController.ts` - Policy controller (used for both main player and opponent)
 
 ## Configuration
 
@@ -70,8 +70,8 @@ To publish the library with type definitions:
 3. Update `package.json`:
    ```json
    {
-     "main": "dist/rl/index.js",
-     "types": "dist/rl/index.d.ts"
+    "main": "dist/MimicRL/index.js",
+    "types": "dist/MimicRL/index.d.ts"
    }
    ```
 
@@ -83,15 +83,15 @@ The following files remain in JavaScript (can be migrated later if needed):
 - `src/game/Renderer.js`
 - `src/game/entities/*.js` - Game entities
 - `src/game/systems/*.js` - Game systems
-- `src/rl/entities/*.js` - RL entities
-- `src/rl/utils/*.js` - Various utilities (except NetworkUtils)
-- `src/rl/visualization/*.js` - Visualization components
+- `src/MimicRL/entities/*.js` - RL entities
+- `src/MimicRL/utils/*.js` - Various utilities (except NetworkUtils)
+- `src/MimicRL/visualization/*.js` - Visualization components
 
 ## Import Conventions
 
 TypeScript files use `.js` extensions in imports (TypeScript convention for ES modules):
 ```typescript
-import { GameCore } from '../rl/core/GameCore.js';
+import { GameCore } from '../MimicRL/core/GameCore.js';
 ```
 
 This is correct - TypeScript will resolve these to the compiled `.js` files or the `.ts` source files depending on the build configuration.

@@ -9,11 +9,11 @@ import { SaberGameCore } from './game/SaberGameCore.js';
 import { GameLoop } from './game/GameLoop.js';
 import { Renderer } from './game/Renderer.js';
 import { HumanController } from './game/controllers/HumanController.js';
-import { PolicyController } from './rl/controllers/PolicyController.js';
-import { PolicyAgent } from './rl/agents/PolicyAgent.js';
-import { TrainingSession } from './rl/training/TrainingSession.js';
-import { TrainingUI } from './rl/visualization/TrainingUI.js';
-import { PolicyManager } from './rl/utils/PolicyManager.js';
+import { PolicyController } from './MimicRL/controllers/PolicyController.js';
+import { PolicyAgent } from './MimicRL/agents/PolicyAgent.js';
+import { TrainingSession } from './MimicRL/training/TrainingSession.js';
+import { TrainingUI } from './MimicRL/visualization/TrainingUI.js';
+import { PolicyManager } from './MimicRL/utils/PolicyManager.js';
 import { RandomController } from './game/controllers/RandomController.js';
 
 /**

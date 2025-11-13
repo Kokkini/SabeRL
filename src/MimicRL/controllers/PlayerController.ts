@@ -5,7 +5,7 @@
  * to work with the RL library. Controllers decide actions based on
  * normalized observations.
  * 
- * Location: src/rl/controllers/PlayerController.ts (library code)
+ * Location: src/MimicRL/controllers/PlayerController.ts (library code)
  */
 
 import { Action } from '../core/GameCore.js';

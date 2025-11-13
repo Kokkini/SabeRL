@@ -11,7 +11,7 @@
 
 ### 1. Standardized GameCore Interface
 
-**Location:** `src/rl/core/GameCore.js` (library code)
+**Location:** `src/MimicRL/core/GameCore.ts` (library code)
 
 The `GameCore` interface is defined in the RL library and serves as the contract that any game implementation must follow. This interface is game-agnostic and allows the RL library to work with any game.
 
@@ -128,7 +128,7 @@ interface ActionSpace {
 
 ### 2. PlayerController Interface
 
-**Location:** `src/rl/controllers/PlayerController.ts` (library code)
+**Location:** `src/MimicRL/controllers/PlayerController.ts` (library code)
 
 The `PlayerController` interface is defined in the RL library and serves as the contract that any controller must implement. This interface is game-agnostic and allows the RL library to work with any controller implementation.
 
@@ -152,7 +152,7 @@ interface PlayerController {
 **Example implementations:**
 
 /**
- * PolicyController - Library code (src/rl/controllers/PolicyController.ts)
+ * PolicyController - Library code (src/MimicRL/controllers/PolicyController.ts)
  * Uses trained neural network, completely game-agnostic
  */
 class PolicyController implements PlayerController {
@@ -871,7 +871,7 @@ RLTrainingSystem.start()
 
 ## Migration Path for Current Code
 
-This migration path transforms the current codebase to align with the game-agnostic RL library design. The goal is to make the RL code (`src/rl/`) a reusable library that works with any game by implementing the `GameCore` interface.
+This migration path transforms the current codebase to align with the game-agnostic RL library design. The goal is to make the RL code (`src/MimicRL/`) a reusable library that works with any game by implementing the `GameCore` interface.
 
 ### Overview of Changes
 
@@ -880,7 +880,7 @@ This migration path transforms the current codebase to align with the game-agnos
 3. **Update `TrainingSession`** to work with `GameCore` interface instead of game object
 4. **Update `RolloutCollector`** to use new `GameCore` interface
 5. **Update controllers** to match `PlayerController` interface
-6. **Organize RL library code** - ensure all library code is in `src/rl/` folder
+6. **Organize RL library code** - ensure all library code is in `src/MimicRL/` folder
 7. **Remove/refactor game-specific utilities** - GameStateProcessor, ActionMapper become game-specific
 
 ### Step 1: Create GameCore Interface and Implement SaberGameCore
@@ -896,7 +896,7 @@ This migration path transforms the current codebase to align with the game-agnos
 
 1. **Create GameCore Interface** (library code):
 ```javascript
-// src/rl/core/GameCore.js
+// src/MimicRL/core/GameCore.ts
 // Interface documentation - see Core Interfaces section above
 // This file documents the GameCore interface contract
 ```
@@ -906,7 +906,7 @@ This migration path transforms the current codebase to align with the game-agnos
 // src/game/SaberGameCore.js
 /**
  * SaberGameCore - Game-specific implementation of the GameCore interface
- * @implements {GameCore} - Implements the GameCore interface from src/rl/core/GameCore.js
+ * @implements {GameCore} - Implements the GameCore interface from src/MimicRL/core/GameCore.ts
  */
 export class SaberGameCore {
   // ... existing constructor and internal state ...
@@ -1095,7 +1095,7 @@ step(actions, deltaTime) {
 ```
 
 **Key Changes:**
-- GameCore is now an **interface** defined in `src/rl/core/GameCore.js` (library code)
+- GameCore is now an **interface** defined in `src/MimicRL/core/GameCore.ts` (library code)
 - `SaberGameCore` implements the `GameCore` interface (game-specific code in `src/game/SaberGameCore.js`)
 - `reset()` returns `GameState` with observations/rewards for all players
 - `step(actions[], deltaTime)` takes actions array, applies to all players uniformly
@@ -1105,7 +1105,7 @@ step(actions, deltaTime) {
 
 ### Step 2: Refactor PolicyAgent to Remove Game-Specific Dependencies
 
-**Current Implementation (`src/rl/agents/PolicyAgent.js`):**
+**Current Implementation (`src/MimicRL/agents/PolicyAgent.ts`):**
 - Uses `GameStateProcessor` to normalize observations (game-specific)
 - Uses `ActionMapper` to map actions (game-specific)
 - Uses `GameState` and `MovementDecision` entities (game-specific)
@@ -1114,7 +1114,7 @@ step(actions, deltaTime) {
 
 **New Implementation:**
 ```javascript
-// src/rl/agents/PolicyAgent.js
+// src/MimicRL/agents/PolicyAgent.ts
 export class PolicyAgent {
   constructor(config) {
     this.observationSize = config.observationSize;
@@ -1220,14 +1220,14 @@ export class PolicyAgent {
 
 ### Step 3: Update TrainingSession to Use GameCore Interface
 
-**Current Implementation (`src/rl/training/TrainingSession.js`):**
+**Current Implementation (`src/MimicRL/training/TrainingSession.ts`):**
 - Constructor takes `game` object (not GameCore interface)
 - Uses game-specific methods and properties
 - Creates PolicyAgent with NeuralNetwork wrapper
 
 **New Implementation:**
 ```javascript
-// src/rl/training/TrainingSession.js
+// src/MimicRL/training/TrainingSession.ts
 export class TrainingSession {
   constructor(gameCore, controllers, config) {
     this.gameCore = gameCore;  // GameCore interface
@@ -1337,14 +1337,14 @@ export class TrainingSession {
 
 ### Step 4: Update RolloutCollector
 
-**Current Implementation (`src/rl/training/RolloutCollector.js`):**
+**Current Implementation (`src/MimicRL/training/RolloutCollector.ts`):**
 - Uses `core.step(action, deltaTime)` (old interface)
 - Uses `core.reset()` returning single observation
 - Uses `agent.act(observation, valueModel)` with valueModel parameter
 
 **New Implementation:**
 ```javascript
-// src/rl/training/RolloutCollector.js
+// src/MimicRL/training/RolloutCollector.ts
 export class RolloutCollector {
   constructor(core, agent, config = {}, hooks = {}) {
     this.core = core;  // GameCore interface
@@ -1461,15 +1461,15 @@ export class RolloutCollector {
 
 1. **Create PlayerController Interface** (library code):
 ```typescript
-// src/rl/controllers/PlayerController.ts
+// src/MimicRL/controllers/PlayerController.ts
 export interface PlayerController {
   decide(observation: number[]): Action;
 }
 ```
 
-2. **Update PolicyController** (library code - already in `src/rl/controllers/PolicyController.ts`):
+2. **Update PolicyController** (library code - already in `src/MimicRL/controllers/PolicyController.ts`):
 ```typescript
-// src/rl/controllers/PolicyController.ts
+// src/MimicRL/controllers/PolicyController.ts
 import { PlayerController } from './PlayerController.js';
 
 export class PolicyController implements PlayerController {
@@ -1498,7 +1498,7 @@ export class PolicyController implements PlayerController {
 ```javascript
 // src/game/controllers/HumanController.js
 /**
- * @implements {PlayerController} - Implements the PlayerController interface from src/rl/controllers/PlayerController.ts
+ * @implements {PlayerController} - Implements the PlayerController interface from src/MimicRL/controllers/PlayerController.ts
  */
 export class HumanController {
   decide(observation) {
@@ -1517,7 +1517,7 @@ export class HumanController {
 ```javascript
 // src/game/controllers/RandomController.js
 /**
- * @implements {PlayerController} - Implements the PlayerController interface from src/rl/controllers/PlayerController.ts
+ * @implements {PlayerController} - Implements the PlayerController interface from src/MimicRL/controllers/PlayerController.ts
  */
 export class RandomController {
   decide(observation) {
@@ -1528,8 +1528,8 @@ export class RandomController {
 ```
 
 **Key Changes:**
-- `PlayerController` is now an **interface** defined in `src/rl/controllers/PlayerController.ts` (library code)
-- `PolicyController` is in the library (`src/rl/controllers/PolicyController.ts`) and implements the interface
+- `PlayerController` is now an **interface** defined in `src/MimicRL/controllers/PlayerController.ts` (library code)
+- `PolicyController` is in the library (`src/MimicRL/controllers/PolicyController.ts`) and implements the interface
 - `HumanController` and `RandomController` are game-specific and implement the interface
 - `decide(observation)` - takes only `observation` parameter (no `deltaTime`)
 - Returns `Action` (number array) directly
@@ -1539,7 +1539,7 @@ export class RandomController {
 
 **Current Structure:**
 ```
-src/rl/
+src/MimicRL/
   - agents/ (PolicyAgent, NeuralNetwork)
   - entities/ (GameState, MovementDecision, TrainingMetrics)
   - training/ (TrainingSession, PPOTrainer, RolloutCollector, ExperienceBuffer)
@@ -1549,9 +1549,9 @@ src/rl/
   - environments/ (ParallelRunner)
 ```
 
-**New Structure (All RL Library Code in `src/rl/`):**
+**New Structure (All RL Library Code in `src/MimicRL/`):**
 ```
-src/rl/
+src/MimicRL/
   - core/
     - GameCore.ts (GameCore interface definition - library code)
   - controllers/
@@ -1582,11 +1582,11 @@ src/rl/
 ```
 
 **Files to Remove/Refactor:**
-- `src/rl/utils/GameStateProcessor.js` - Move to `src/game/utils/` (game-specific)
-- `src/rl/utils/ActionMapper.js` - Move to `src/game/utils/` (game-specific)
-- `src/rl/entities/GameState.js` - Remove (use GameState from design interface)
-- `src/rl/entities/MovementDecision.js` - Remove (not needed in library)
-- `src/rl/agents/NeuralNetwork.js` - Can be removed (use tf.LayersModel directly in PolicyAgent)
+- `src/MimicRL/utils/GameStateProcessor.js` - Move to `src/game/utils/` (game-specific)
+- `src/MimicRL/utils/ActionMapper.js` - Move to `src/game/utils/` (game-specific)
+- `src/MimicRL/entities/GameState.js` - Remove (use GameState from design interface)
+- `src/MimicRL/entities/MovementDecision.js` - Remove (not needed in library)
+- `src/MimicRL/agents/NeuralNetwork.js` - Can be removed (use tf.LayersModel directly in PolicyAgent)
 - `src/game/controllers/PlayerController.js` - Remove (interface moved to library)
 
 ### Step 7: Update PPOTrainer to Work with New PolicyAgent
@@ -1597,7 +1597,7 @@ src/rl/
 
 **New Implementation:**
 ```javascript
-// src/rl/training/PPOTrainer.js
+// src/MimicRL/training/PPOTrainer.js
 export class PPOTrainer {
   async train(experiences, policyAgent) {
     // policyAgent contains: policyNetwork, valueNetwork, learnableStd, actionSpaces
@@ -1667,9 +1667,9 @@ export class PPOTrainer {
 ```javascript
 // src/main.js
 import { SaberGameCore } from './game/SaberGameCore.js';
-import { PolicyAgent } from './rl/agents/PolicyAgent.js';
-import { PolicyController } from './rl/controllers/PolicyController.js';
-import { TrainingSession } from './rl/training/TrainingSession.js';
+import { PolicyAgent } from './MimicRL/agents/PolicyAgent.js';
+import { PolicyController } from './MimicRL/controllers/PolicyController.js';
+import { TrainingSession } from './MimicRL/training/TrainingSession.js';
 
 // Initialize SaberGameCore (implements GameCore interface)
 const gameCore = new SaberGameCore();
@@ -1705,23 +1705,23 @@ await trainingSession.start();
 3. ✅ **Update TrainingSession** - Use GameCore interface, controllers array
 4. ✅ **Update RolloutCollector** - Use new GameCore interface
 5. ✅ **Update Controllers** - Match PlayerController interface
-6. ✅ **Organize RL Library** - Keep all library code in `src/rl/`, remove game-specific code
+6. ✅ **Organize RL Library** - Keep all library code in `src/MimicRL/`, remove game-specific code
 7. ✅ **Update PPOTrainer** - Take PolicyAgent object, remove game-specific deps
 8. ✅ **Update Main App** - Use new interfaces
 
-**Result:** The RL code in `src/rl/` becomes a reusable library. To use it with a new game:
-1. Implement the `GameCore` interface (defined in `src/rl/core/GameCore.js`) for the new game
+**Result:** The RL code in `src/MimicRL/` becomes a reusable library. To use it with a new game:
+1. Implement the `GameCore` interface (defined in `src/MimicRL/core/GameCore.js`) for the new game
 2. Create `PolicyAgent` with observation/action sizes from your GameCore implementation
 3. Create `TrainingSession` with your GameCore implementation and controllers
 4. Start training - the library handles everything else
 
 **Library Structure:**
-- `src/rl/core/GameCore.ts` - GameCore interface definition (library code)
-- `src/rl/controllers/PlayerController.ts` - PlayerController interface definition (library code)
-- `src/rl/controllers/PolicyController.ts` - PolicyController implementation (library code)
-- `src/rl/agents/` - PolicyAgent and other agents (library code)
-- `src/rl/training/` - TrainingSession, PPOTrainer, etc. (library code)
-- `src/rl/utils/` - NetworkUtils and other utilities (library code)
+- `src/MimicRL/core/GameCore.ts` - GameCore interface definition (library code)
+- `src/MimicRL/controllers/PlayerController.ts` - PlayerController interface definition (library code)
+- `src/MimicRL/controllers/PolicyController.ts` - PolicyController implementation (library code)
+- `src/MimicRL/agents/` - PolicyAgent and other agents (library code)
+- `src/MimicRL/training/` - TrainingSession, PPOTrainer, etc. (library code)
+- `src/MimicRL/utils/` - NetworkUtils and other utilities (library code)
 - `src/game/SaberGameCore.ts` - Saber game implementation of GameCore interface (game-specific code)
 - `src/game/controllers/HumanController.js` - HumanController implementation of PlayerController interface (game-specific code)
 - `src/game/controllers/RandomController.js` - RandomController implementation of PlayerController interface (game-specific code)
@@ -1740,11 +1740,11 @@ await trainingSession.start();
 
 **The RL library's purpose is to produce good `PolicyController` instances that work with normalized number arrays.**
 
-### What is Game-Agnostic (Library Code in `src/rl/`):
-- ✅ `PolicyController` (`src/rl/controllers/PolicyController.ts`) - only sees `number[]` observations
-- ✅ `PolicyAgent` (`src/rl/agents/PolicyAgent.ts`) - only works with `number[]` and action spaces
+### What is Game-Agnostic (Library Code in `src/MimicRL/`):
+- ✅ `PolicyController` (`src/MimicRL/controllers/PolicyController.ts`) - only sees `number[]` observations
+- ✅ `PolicyAgent` (`src/MimicRL/agents/PolicyAgent.ts`) - only works with `number[]` and action spaces
 - ✅ `Trainer` (PPOTrainer, etc.) - trains on `number[]` observations
-- ✅ `GameCore` interface (`src/rl/core/GameCore.ts`) - defines the contract for game implementations
+- ✅ `GameCore` interface (`src/MimicRL/core/GameCore.ts`) - defines the contract for game implementations
 - ✅ `policyNetwork` and `valueNetwork` (tf.LayersModel) - take `number[]` as input, return arrays
 - ✅ All training logic, loss functions, optimizers
 
@@ -1752,7 +1752,7 @@ await trainingSession.start();
 - ❌ `GameCore` implementations (e.g., `SaberGameCore`) - game logic, physics, and normalization to `number[]`
   - `GameCore` implementations are responsible for converting their internal state to normalized arrays
   - Each game implements its own `GameCore` class (e.g., `SaberGameCore`, `SoccerGameCore`) with normalization logic
-  - The `GameCore` interface itself is in the library (`src/rl/core/GameCore.ts`), but implementations are game-specific
+  - The `GameCore` interface itself is in the library (`src/MimicRL/core/GameCore.ts`), but implementations are game-specific
 
 ### Result:
 A trained `PolicyController` can be:

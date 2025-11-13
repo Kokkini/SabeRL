@@ -95,3 +95,6 @@ Thumbs.db
 *.save
 *.replay
 screenshots/
+
+# TODO files
+TODO.md

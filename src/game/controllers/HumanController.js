@@ -2,7 +2,7 @@
  * HumanController - Controller for human player input via keyboard
  * Implements PlayerController interface from RL library
  * 
- * @implements {PlayerController} - Implements the PlayerController interface from src/rl/controllers/PlayerController.ts
+ * @implements {PlayerController} - Implements the PlayerController interface from src/MimicRL/controllers/PlayerController.ts
  */
 export class HumanController {
   constructor(id = 'human', bindings = { up: 'KeyW', left: 'KeyA', down: 'KeyS', right: 'KeyD' }) {

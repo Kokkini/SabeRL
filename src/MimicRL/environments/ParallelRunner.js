@@ -8,7 +8,7 @@ export class ParallelRunner {
     this.options = {
       maxWorkers: options.maxWorkers || navigator.hardwareConcurrency || 4,
       parallelGames: options.parallelGames || 10,
-      workerScript: options.workerScript || '/src/rl/workers/TrainingWorker.js',
+      workerScript: options.workerScript || '/src/MimicRL/workers/TrainingWorker.js',
       ...options
     };
 

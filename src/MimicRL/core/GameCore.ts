@@ -5,7 +5,7 @@
  * to work with the RL library. All game-specific implementations
  * should implement this interface.
  * 
- * Location: src/rl/core/GameCore.ts (library code)
+ * Location: src/MimicRL/core/GameCore.ts (library code)
  */
 
 /**
