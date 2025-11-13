@@ -62,17 +62,29 @@ export class OpponentPolicyManager {
   /**
    * Add a policy option from a serialized bundle.
    * Bundle should contain:
-   * - policy: SerializedNetworkData for policy network
-   * - value: SerializedNetworkData for value network (optional, will create default if missing)
-   * - learnableStd: number[] for learnable standard deviations (optional, will use default if missing)
+   * - policy OR policyNetwork: SerializedNetworkData for policy network
+   * - value OR valueNetwork: SerializedNetworkData for value network (optional, will create default if missing)
+   * - learnableStd: number[] or object with {data, shape, dtype} for learnable standard deviations (optional, will use default if missing)
    * - observationSize: number (optional, will use GameCore if available)
    * - actionSize: number (optional, will use GameCore if available)
    * - actionSpaces: ActionSpace[] (optional, will use GameCore if available)
    */
   addPolicy(label, bundle) {
-    if (!bundle || !bundle.policy) {
-      throw new Error('Invalid bundle: missing policy');
+    // Handle both formats: {policy, value} and {policyNetwork, valueNetwork}
+    const policyData = bundle.policy || bundle.policyNetwork;
+    const valueData = bundle.value || bundle.valueNetwork;
+    
+    if (!bundle || !policyData) {
+      throw new Error('Invalid bundle: missing policy (expected "policy" or "policyNetwork" property)');
     }
+    
+    // Handle learnableStd format: can be array or object with {data, shape, dtype}
+    let learnableStd = bundle.learnableStd;
+    if (learnableStd && typeof learnableStd === 'object' && learnableStd.data) {
+      // Convert from {data, shape, dtype} format to array
+      learnableStd = learnableStd.data;
+    }
+    
     const id = `opp_${Date.now()}_${Math.random().toString(36).substr(2,9)}`;
     const option = {
       id,
@@ -80,9 +92,9 @@ export class OpponentPolicyManager {
       type: 'policy',
       weight: 1,
       // Store the full bundle for later reconstruction
-      policyData: bundle.policy,
-      valueData: bundle.value, // Optional
-      learnableStd: bundle.learnableStd, // Optional
+      policyData: policyData,
+      valueData: valueData, // Optional
+      learnableStd: learnableStd, // Optional
       observationSize: bundle.observationSize, // Optional
       actionSize: bundle.actionSize, // Optional
       actionSpaces: bundle.actionSpaces // Optional
