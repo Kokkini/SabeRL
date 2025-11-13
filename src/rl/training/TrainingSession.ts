@@ -36,6 +36,26 @@ export class TrainingSession {
   public controllers: (PlayerController | null)[];
   public readonly trainablePlayers: number[];
   public readonly options: TrainingSessionOptions;
+  
+  /**
+   * Get the primary trainable player index (first trainable player)
+   * Used for determining win/loss from outcome arrays
+   */
+  private getPrimaryTrainablePlayerIndex(): number {
+    return this.trainablePlayers[0] || 0;
+  }
+  
+  /**
+   * Get outcome for the primary trainable player from an outcome array
+   * @param outcome - Outcome array from GameState
+   * @returns Outcome for the trainable player, or null if invalid
+   */
+  private getTrainablePlayerOutcome(outcome: ('win'|'loss'|'tie')[] | null): ('win'|'loss'|'tie') | null {
+    if (!outcome || outcome.length === 0) return null;
+    const trainableIdx = this.getPrimaryTrainablePlayerIndex();
+    if (trainableIdx >= outcome.length) return null;
+    return outcome[trainableIdx] || null;
+  }
 
   // Training state
   public isTraining: boolean;
@@ -276,8 +296,10 @@ export class TrainingSession {
             // Update per-episode metrics for immediate win rate/UI refresh
             try {
               // outcome is now an array: ['win', 'loss'] or ['tie', 'tie']
-              const isTie = outcome && outcome[0] === 'tie';
-              const won = outcome && outcome[0] === 'win' && !isTie;
+              // Use trainable player index instead of hardcoded [0]
+              const playerOutcome = this.getTrainablePlayerOutcome(outcome);
+              const isTie = playerOutcome === 'tie';
+              const won = playerOutcome === 'win' && !isTie;
               this.trainingMetrics.updateGameResult({
                 won: !!won,
                 isTie: isTie,
@@ -537,13 +559,15 @@ export class TrainingSession {
       
       if (exp.done) {
         // Game ended - determine outcome from outcome metadata
+        // Use trainable player index instead of hardcoded [0]
         let won = false;
         let isTie = false;
         if (exp.outcome) {
-          isTie = exp.outcome[0] === 'tie';
-          if (isTie) {
+          const playerOutcome = this.getTrainablePlayerOutcome(exp.outcome);
+          if (playerOutcome === 'tie') {
+            isTie = true;
             ties++;
-          } else if (exp.outcome[0] === 'win') {
+          } else if (playerOutcome === 'win') {
             won = true;
             wins++;
           } else {
@@ -607,13 +631,15 @@ export class TrainingSession {
       
       if (exp.done) {
         // Game ended - determine outcome
+        // Use trainable player index instead of hardcoded [0]
         const terminalReward = exp.reward;
         let won = false;
         let isTie = false;
         
         if (exp.outcome) {
-          isTie = exp.outcome[0] === 'tie';
-          won = exp.outcome[0] === 'win' && !isTie;
+          const playerOutcome = this.getTrainablePlayerOutcome(exp.outcome);
+          isTie = playerOutcome === 'tie';
+          won = playerOutcome === 'win' && !isTie;
         } else {
           // Fallback to reward threshold
           if (terminalReward > 0.3) {
