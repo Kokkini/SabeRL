@@ -10,7 +10,7 @@ import { TrainingMetrics } from '../entities/TrainingMetrics.js';
 import { ModelManager } from '../utils/ModelManager.js';
 import { PPOTrainer } from './PPOTrainer.js';
 import { RolloutCollector, Experience } from './RolloutCollector.js';
-import { OpponentPolicyManager } from '../utils/OpponentPolicyManager.js';
+import { PolicyManager } from '../utils/PolicyManager.js';
 import { PolicyController } from '../controllers/PolicyController.js';
 import { PlayerController } from '../controllers/PlayerController.js';
 import { NetworkUtils } from '../utils/NetworkUtils.js';
@@ -73,8 +73,8 @@ export class TrainingSession {
   public trainer: PPOTrainer | null;
   public trainingParams: any;
 
-  // Opponent manager for rollouts
-  public readonly opponentManager: OpponentPolicyManager;
+  // Policy manager for sampling policies for non-trainable players
+  public readonly policyManager: PolicyManager;
 
   constructor(gameCore: GameCore, controllers: (PlayerController | null)[], options: TrainingSessionOptions = {}) {
     this.gameCore = gameCore;  // GameCore interface
@@ -129,8 +129,9 @@ export class TrainingSession {
     this.trainer = null;
     this.trainingParams = null; // Will be set from UI when training starts
 
-    // Opponent manager for rollouts
-    this.opponentManager = new OpponentPolicyManager();
+    // Policy manager for sampling policies for non-trainable players
+    this.policyManager = new PolicyManager();
+    this.policyManager.setGameCore(gameCore);
   }
 
   /**
@@ -260,9 +261,10 @@ export class TrainingSession {
         },
         {
           sampleOpponent: () => {
+            // Sample a policy for non-trainable players (e.g., player 1)
             // Refresh from storage before sampling to reflect UI changes
-            try { this.opponentManager.load(); } catch (_) {}
-            const sel = this.opponentManager.sample();
+            try { this.policyManager.load(); } catch (_) {}
+            const sel = this.policyManager.sample();
             if (sel.type === 'policy' && sel.agent) {
               return new PolicyController(sel.agent);
             }

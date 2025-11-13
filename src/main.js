@@ -13,7 +13,7 @@ import { PolicyController } from './rl/controllers/PolicyController.js';
 import { PolicyAgent } from './rl/agents/PolicyAgent.js';
 import { TrainingSession } from './rl/training/TrainingSession.js';
 import { TrainingUI } from './rl/visualization/TrainingUI.js';
-import { OpponentPolicyManager } from './rl/utils/OpponentPolicyManager.js';
+import { PolicyManager } from './rl/utils/PolicyManager.js';
 import { RandomController } from './game/controllers/RandomController.js';
 
 /**
@@ -42,9 +42,9 @@ class SabeRLArena {
     this.trainingSession = null;
     this.trainingUI = null;
 
-    // Opponent configuration
-    this.opponentManager = null;
-    this.opponentController = null;  // Opponent controller for GameLoop
+    // Policy configuration
+    this.policyManager = null;
+    this.opponentController = null;  // Opponent controller for GameLoop (legacy name, can be any player)
   }
 
   /**
@@ -120,8 +120,8 @@ class SabeRLArena {
       // Initialize training system
       this.initializeTraining();
 
-      // Initialize opponent manager
-      this.opponentManager = new OpponentPolicyManager(this.core);
+      // Initialize policy manager
+      this.policyManager = new PolicyManager(this.core);
 
       // Initialize scoreboard
       this.updateScoreboard();
@@ -334,29 +334,29 @@ class SabeRLArena {
   }
 
   /**
-   * Sample opponent option and apply controller to game loop
-   * Note: In new design, opponent is handled through controllers array in GameLoop
+   * Sample policy option and apply controller to game loop for player 1
+   * Note: In new design, all players are equal - this samples a policy for player 1
    */
   applyOpponentSelection() {
     try {
       if (!this.core || !this.gameLoop) return;
-      if (this.opponentManager && typeof this.opponentManager.load === 'function') {
+      if (this.policyManager && typeof this.policyManager.load === 'function') {
         // Refresh options from storage in case UI changed them
-        this.opponentManager.load();
+        this.policyManager.load();
       }
-      const selection = this.opponentManager ? this.opponentManager.sample() : { type: 'random' };
+      const selection = this.policyManager ? this.policyManager.sample() : { type: 'random' };
       
-      // Store opponent controller for use in GameLoop
+      // Store controller for player 1 in GameLoop
       if (selection.type === 'policy' && selection.agent) {
         this.opponentController = new PolicyController(selection.agent);
-        console.log(`Opponent set to policy: ${selection.label}`);
+        console.log(`Player 1 set to policy: ${selection.label}`);
       } else {
         // Use RandomController as default (GameLoop already has it set)
         this.opponentController = new RandomController(this.core.getActionSpaces());
-        console.log('Opponent set to random');
+        console.log('Player 1 set to random');
       }
     } catch (e) {
-      console.warn('Failed to apply opponent selection, falling back to random', e);
+      console.warn('Failed to apply policy selection for player 1, falling back to random', e);
       // Fallback to RandomController on error
       this.opponentController = new RandomController(this.core?.getActionSpaces?.() || null);
     }

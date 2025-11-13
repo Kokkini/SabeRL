@@ -4,7 +4,7 @@
  */
 
 import { GameConfig } from '../../config/config.js';
-import { OpponentPolicyManager } from '../utils/OpponentPolicyManager.js';
+import { PolicyManager } from '../utils/PolicyManager.js';
 
 export class TrainingUI {
   constructor(containerId = 'training-ui') {
@@ -117,8 +117,8 @@ export class TrainingUI {
     this.importButton = null;
     this.importFileInput = null;
 
-    // Opponent settings
-    this.opponentManager = new OpponentPolicyManager();
+    // Policy settings (for managing policies for any player)
+    this.policyManager = new PolicyManager();
     this.oppListContainer = null;
     this.oppUploadInput = null;
 
@@ -1050,7 +1050,7 @@ export class TrainingUI {
         try {
           const text = await f.text();
           const bundle = JSON.parse(text);
-          this.opponentManager.addPolicy(f.name.replace(/\.json$/i, ''), bundle);
+          this.policyManager.addPolicy(f.name.replace(/\.json$/i, ''), bundle);
           this.renderOpponentOptions();
         } catch (err) {
           console.error('Invalid opponent policy JSON', err);
@@ -1061,7 +1061,7 @@ export class TrainingUI {
     }
     if (oppResetBtn) {
       oppResetBtn.addEventListener('click', () => {
-        this.opponentManager.resetToDefault();
+        this.policyManager.resetToDefault();
         this.renderOpponentOptions();
       });
     }
@@ -1069,7 +1069,7 @@ export class TrainingUI {
 
   renderOpponentOptions() {
     if (!this.oppListContainer) return;
-    const opts = this.opponentManager.getOptions();
+    const opts = this.policyManager.getOptions();
     const html = [`<table style="width:100%; font-size:12px;"><thead><tr><th style="text-align:center;">Label</th><th>Type</th><th>Weight</th><th></th></tr></thead><tbody>`];
     for (const o of opts) {
       html.push(
@@ -1090,14 +1090,14 @@ export class TrainingUI {
       inp.addEventListener('change', (e) => {
         const id = e.target.getAttribute('data-opp-id');
         const val = e.target.value;
-        this.opponentManager.updateWeight(id, Number(val));
+        this.policyManager.updateWeight(id, Number(val));
       });
     });
     const deleteBtns = this.oppListContainer.querySelectorAll('button[data-del-id]');
     deleteBtns.forEach(btn => {
       btn.addEventListener('click', () => {
         const id = btn.getAttribute('data-del-id');
-        this.opponentManager.removeOption(id);
+        this.policyManager.removeOption(id);
         this.renderOpponentOptions();
       });
     });

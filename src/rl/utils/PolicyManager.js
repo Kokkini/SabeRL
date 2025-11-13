@@ -2,12 +2,13 @@ import { PolicyAgent } from '../agents/PolicyAgent.js';
 import { NetworkUtils } from './NetworkUtils.js';
 
 /**
- * OpponentPolicyManager maintains a weighted list of opponent options.
+ * PolicyManager maintains a weighted list of policy options.
  * Options can be 'random' or 'policy' (backed by a PolicyAgent).
+ * This is a general manager for any player - all players are treated equally.
  * It persists configuration and caches constructed agents.
  */
-export class OpponentPolicyManager {
-  constructor(gameCore = null, storageKey = 'saber_rl_opponent_config') {
+export class PolicyManager {
+  constructor(gameCore = null, storageKey = 'saber_rl_policy_config') {
     this.gameCore = gameCore; // GameCore interface - needed to get observation/action sizes
     this.storageKey = storageKey;
     this.options = [];
@@ -85,7 +86,7 @@ export class OpponentPolicyManager {
       learnableStd = learnableStd.data;
     }
     
-    const id = `opp_${Date.now()}_${Math.random().toString(36).substr(2,9)}`;
+    const id = `policy_${Date.now()}_${Math.random().toString(36).substr(2,9)}`;
     const option = {
       id,
       label: label || `Policy ${this.options.length}`,
@@ -106,6 +107,7 @@ export class OpponentPolicyManager {
 
   /**
    * Sample one option by weights. Returns { type, id, label, agent? }
+   * This can be used for any player - the caller decides which player to assign it to.
    */
   sample() {
     const total = this.options.reduce((s, o) => s + Math.max(0, Number(o.weight) || 0), 0);
@@ -225,5 +227,4 @@ export class OpponentPolicyManager {
     this.agentCache.clear();
   }
 }
-
 
