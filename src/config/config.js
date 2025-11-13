@@ -266,6 +266,18 @@ export const GameConfig = {
       deltaTime: 0.05,             // Fixed timestep for game updates
       actionIntervalSeconds: 0.2,   // Time between agent actions
       yieldInterval: 10            // Yield to event loop every N experiences (for UI responsiveness)
+    },
+
+    // Behavior Cloning configuration
+    behaviorCloning: {
+      enabled: true,                // Enable behavior cloning functionality
+      demonstrationStorageKey: 'mimicrl_demonstrations', // Storage key for demonstrations (localStorage)
+      learningRate: 0.001,          // Learning rate for BC optimizer
+      batchSize: 32,                // Batch size for training
+      epochs: 2,                   // Number of epochs to train
+      lossType: 'mixed',            // Loss function type: 'mse', 'crossentropy', or 'mixed'
+      weightDecay: 0.0001,          // L2 regularization weight decay
+      validationSplit: 0.2          // Fraction of data to use for validation (0-1)
     }
   }
 };

@@ -303,6 +303,12 @@ class SabeRLArena {
 
       // Reset core state and start loop
       const initialState = this.core.reset();
+      
+      // Clear key states in controller to prevent stuck keys from previous game
+      if (this.controller && typeof this.controller.clearKeyStates === 'function') {
+        this.controller.clearKeyStates();
+      }
+      
       // Sample and set opponent controller for this game
       this.applyOpponentSelection();
       // Set opponent controller in game loop (always set, even if it's RandomController)
@@ -569,6 +575,17 @@ class SabeRLArena {
           policyHiddenLayers: GameConfig.rl.hiddenLayers || [64, 32],
           valueHiddenLayers: GameConfig.rl.hiddenLayers || [64, 32],
           activation: 'relu'
+        },
+        // Behavior Cloning configuration
+        enableBehaviorCloning: GameConfig.rl.behaviorCloning?.enabled ?? true,
+        demonstrationStorageKey: GameConfig.rl.behaviorCloning?.demonstrationStorageKey || 'mimicrl_demonstrations',
+        behaviorCloningConfig: {
+          learningRate: GameConfig.rl.behaviorCloning?.learningRate ?? 0.001,
+          batchSize: GameConfig.rl.behaviorCloning?.batchSize ?? 32,
+          epochs: GameConfig.rl.behaviorCloning?.epochs ?? 10,
+          lossType: GameConfig.rl.behaviorCloning?.lossType || 'mixed',
+          weightDecay: GameConfig.rl.behaviorCloning?.weightDecay ?? 0.0001,
+          validationSplit: GameConfig.rl.behaviorCloning?.validationSplit ?? 0.2
         }
       });
 
@@ -578,7 +595,10 @@ class SabeRLArena {
       // Create training UI
       this.trainingUI = new TrainingUI('training-ui');
       this.trainingUI.initialize();
+      
+      // Set training session and game loop references
       this.trainingUI.setTrainingSession(this.trainingSession);
+      this.trainingUI.setGameLoop(this.gameLoop);
 
       // Auto-update AI control to use trained agent if already enabled
       this.updateAIControlToTrainedAgent();

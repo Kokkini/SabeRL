@@ -37,6 +37,13 @@ export class HumanController {
     this.lastActionMask = action; // Keep for backward compatibility
     return action;
   }
+
+  /**
+   * Clear all key states (useful when game resets)
+   */
+  clearKeyStates() {
+    this.keyState.clear();
+  }
 }
 
 

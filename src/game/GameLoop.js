@@ -7,6 +7,7 @@ import { GameConfig } from '../config/config.js';
 import { Renderer } from './Renderer.js';
 import { HumanController } from './controllers/HumanController.js';
 import { RandomController } from './controllers/RandomController.js';
+import { DemonstrationCollector } from '../MimicRL/bc/DemonstrationCollector.js';
 
 export class GameLoop {
   /**
@@ -50,6 +51,14 @@ export class GameLoop {
     this.onUpdate = null;
     this.onRender = null;
     this.onError = null;
+    this.onGameEnd = null;
+    
+    // Behavior Cloning: Demonstration collector
+    this.demonstrationCollector = new DemonstrationCollector({
+      autoRecord: false  // User must explicitly enable
+    });
+    this.isRecordingDemonstration = false;
+    this.onDemonstrationComplete = null;  // Callback when episode ends and recording is active
   }
 
   /**
@@ -65,6 +74,14 @@ export class GameLoop {
     this._isRunning = true;
     this.lastTime = performance.now();
     this.accumulator = 0;
+    
+    // If recording is active, start a new episode
+    if (this.isRecordingDemonstration) {
+      const episodeId = `episode_${Date.now()}`;
+      this.demonstrationCollector.startEpisode(episodeId, {
+        playerIndex: 0
+      });
+    }
     
     // Start the loop
     this.loop();
@@ -85,6 +102,31 @@ export class GameLoop {
   }
 
   /**
+   * Enable demonstration recording for current episode
+   * @param {string} episodeId - Unique identifier for this episode
+   */
+  startDemonstrationRecording(episodeId) {
+    this.isRecordingDemonstration = true;
+    this.demonstrationCollector.startEpisode(episodeId, {
+      playerIndex: 0  // Assuming player 0 is the human/expert
+    });
+  }
+
+  /**
+   * Disable demonstration recording
+   */
+  stopDemonstrationRecording() {
+    this.isRecordingDemonstration = false;
+  }
+
+  /**
+   * Check if currently recording demonstrations
+   */
+  getRecordingDemonstration() {
+    return this.isRecordingDemonstration;
+  }
+
+  /**
    * Stop the game loop
    */
   stop() {
@@ -95,6 +137,11 @@ export class GameLoop {
     
     console.log('Stopping game loop...');
     this._isRunning = false;
+    
+    // Clear key states in HumanController to prevent stuck keys
+    if (this.controller && typeof this.controller.clearKeyStates === 'function') {
+      this.controller.clearKeyStates();
+    }
     
     // Cancel animation frame if pending
     if (this.animationFrameId) {
@@ -165,6 +212,14 @@ export class GameLoop {
       // Initialize state if needed
       if (!this.lastState) {
         this.lastState = this.core.reset();
+        
+        // If recording is active, start a new episode
+        if (this.isRecordingDemonstration) {
+          const episodeId = `episode_${Date.now()}`;
+          this.demonstrationCollector.startEpisode(episodeId, {
+            playerIndex: 0
+          });
+        }
       }
       
       // Throttle player decisions by actionIntervalSeconds (only for non-human controllers)
@@ -231,7 +286,28 @@ export class GameLoop {
       const result = this.core.step(actions, deltaTime);
       this.lastState = result || this.lastState;
       
+      // Record demonstration step if recording
+      if (this.isRecordingDemonstration && this.lastState && action) {
+        const observation = this.lastState.observations[0];  // Player 0's observation
+        this.demonstrationCollector.recordStep(observation, action);
+      }
+      
       if (result && result.done) {
+        // End demonstration recording if active
+        if (this.isRecordingDemonstration) {
+          const episode = this.demonstrationCollector.endEpisode({
+            outcome: result.outcome
+          });
+          
+          // Trigger callback to ask user if they want to save
+          if (this.onDemonstrationComplete && episode) {
+            this.onDemonstrationComplete(episode);
+          }
+          
+          // Don't stop recording here - let it continue for next episode
+          // Recording only stops when user explicitly clicks "Stop Recording"
+        }
+        
         if (this.onGameEnd) {
           // Convert outcome array to legacy format for compatibility
           const legacyOutcome = result.outcome ? {
