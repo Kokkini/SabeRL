@@ -59,6 +59,11 @@ export class GameLoop {
     });
     this.isRecordingDemonstration = false;
     this.onDemonstrationComplete = null;  // Callback when episode ends and recording is active
+    
+    // BC recording state: track when to record (respect action intervals)
+    this.lastRecordedAction = null;  // Last action that was recorded
+    this.lastRecordedTime = 0;      // Timestamp of last recording
+    this.bcActionInterval = this.playerActionInterval;  // Use same interval as action decisions
   }
 
   /**
@@ -107,6 +112,8 @@ export class GameLoop {
    */
   startDemonstrationRecording(episodeId) {
     this.isRecordingDemonstration = true;
+    this.lastRecordedAction = null;  // Reset tracking
+    this.lastRecordedTime = 0;       // Reset tracking
     this.demonstrationCollector.startEpisode(episodeId, {
       playerIndex: 0  // Assuming player 0 is the human/expert
     });
@@ -124,6 +131,21 @@ export class GameLoop {
    */
   getRecordingDemonstration() {
     return this.isRecordingDemonstration;
+  }
+
+  /**
+   * Helper method to compare two arrays for equality
+   * @param {Array} a - First array
+   * @param {Array} b - Second array
+   * @returns {boolean} True if arrays are equal
+   */
+  arraysEqual(a, b) {
+    if (!a || !b) return false;
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) return false;
+    }
+    return true;
   }
 
   /**
@@ -286,10 +308,25 @@ export class GameLoop {
       const result = this.core.step(actions, deltaTime);
       this.lastState = result || this.lastState;
       
-      // Record demonstration step if recording
+      // Record demonstration step if recording (respect action intervals like RL training)
       if (this.isRecordingDemonstration && this.lastState && action) {
-        const observation = this.lastState.observations[0];  // Player 0's observation
-        this.demonstrationCollector.recordStep(observation, action);
+        // Check if we should record:
+        // 1. Action changed from last recorded action
+        // 2. Enough time has passed since last recording (action interval)
+        const actionChanged = !this.lastRecordedAction || 
+          !this.arraysEqual(action, this.lastRecordedAction);
+        const currentTime = Date.now();
+        const timeSinceLastRecord = (currentTime - this.lastRecordedTime) / 1000;
+        const shouldRecord = actionChanged || 
+          (timeSinceLastRecord >= this.bcActionInterval);
+        
+        if (shouldRecord) {
+          const observation = this.lastState.observations[0];  // Player 0's observation
+          this.demonstrationCollector.recordStep(observation, action);
+          // Update tracking state
+          this.lastRecordedAction = [...action];  // Copy action array
+          this.lastRecordedTime = currentTime;
+        }
       }
       
       if (result && result.done) {
