@@ -218,7 +218,7 @@ export const GameConfig = {
   // RL Training settings
   rl: {
     // Neural network architecture
-    hiddenLayers: [64, 32, 16],
+    hiddenLayers: [64, 64],
     
     // Training parameters
     learningRate: 0.001,
